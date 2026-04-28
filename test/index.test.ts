@@ -32,6 +32,8 @@ describe('parse (file)', () => {
   test('null', async () => assert.strictEqual(await parse('null'), null));
   test('true', async () => assert.strictEqual(await parse('true'), true));
   test('false', async () => assert.strictEqual(await parse('false'), false));
+  test('null with whitespace', async () =>
+    assert.strictEqual(await parse(' \t\r\nnull\n\r\t '), null));
 });
 
 describe('parseFromReadable (cross-chunk)', () => {

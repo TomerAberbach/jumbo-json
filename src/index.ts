@@ -137,6 +137,15 @@ function tokenize(
             i += 5;
             break;
           }
+          case Byte.Space:
+          case Byte.Tab:
+          case Byte.Newline:
+          case Byte.CarriageReturn: {
+            // Skip whitespace
+            i += 1;
+            break;
+          }
+
           default:
             // TODO: whitespace, numbers, etc. For now, skip unknown bytes.
             i += 1;
