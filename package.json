@@ -1,0 +1,36 @@
+{
+  "name": "@mcluck/big-json",
+  "version": "0.1.0",
+  "description": "",
+  "author": "Mike Cluck",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsgo -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "pnpm run clean && pnpm run build",
+    "test": "node --test 'test/**/*.test.ts'",
+    "test:watch": "node --test --watch 'test/**/*.test.ts'"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@typescript/native-preview": "beta"
+  },
+  "packageManager": "pnpm@10.27.0",
+  "engines": {
+    "node": ">=18"
+  }
+}
