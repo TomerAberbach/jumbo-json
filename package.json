@@ -23,11 +23,19 @@
     "clean": "rm -rf dist",
     "prepublishOnly": "pnpm run clean && pnpm run build",
     "test": "node --test 'test/**/*.test.ts'",
-    "test:watch": "node --test --watch 'test/**/*.test.ts'"
+    "test:watch": "node --test --watch 'test/**/*.test.ts'",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^25.6.0",
-    "@typescript/native-preview": "beta"
+    "@typescript/native-preview": "beta",
+    "eslint": "^10.2.1",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.3",
+    "typescript-eslint": "^8.59.1"
   },
   "packageManager": "pnpm@10.27.0",
   "engines": {
