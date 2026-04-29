@@ -26,7 +26,7 @@ const strToReadable = (text: string, chunkSize: number): Readable => {
 };
 
 const parseStream = (text: string, chunkSize: number): Promise<unknown> =>
-  BigJSON.parseFromReadable(strToReadable(text, chunkSize));
+  BigJSON.parse(strToReadable(text, chunkSize));
 
 describe('parse (file)', () => {
   test('null', async () => assert.strictEqual(await parse('null'), null));
@@ -36,7 +36,7 @@ describe('parse (file)', () => {
     assert.strictEqual(await parse(' \t\r\nnull\n\r\t '), null));
 });
 
-describe('parseFromReadable (cross-chunk)', () => {
+describe('parse (cross-chunk)', () => {
   for (const chunkSize of [1, 2, 3, 4, 5]) {
     test(`null with chunkSize=${chunkSize}`, async () => {
       assert.strictEqual(await parseStream('null', chunkSize), null);
@@ -50,6 +50,6 @@ describe('parseFromReadable (cross-chunk)', () => {
   }
 
   test('truncated null throws', async () => {
-    await assert.rejects(parseStream('nul', 1), /EOF|truncated/i);
+    await assert.rejects(parseStream('nul', 1), /Unexpected end of input/i);
   });
 });
