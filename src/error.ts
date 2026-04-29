@@ -25,7 +25,14 @@ export class ParseError extends Error {
     );
   }
 
-  static endOfInput(offset: number): ParseError {
+  static expectedEndOfInput(offset: number): ParseError {
+    return new ParseError(
+      offset,
+      `Expected input to end at byte ${offset} but found non-whitespace character`,
+    );
+  }
+
+  static unexpectedEndOfInput(offset: number): ParseError {
     return new ParseError(offset, `Unexpected end of input at byte ${offset}`);
   }
 

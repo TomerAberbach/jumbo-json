@@ -17,6 +17,7 @@ export class ParserContext {
     switch (frame.kind) {
       case FrameKind.Root:
         frame.value = value;
+        this.state = ParserState.Done;
         break;
 
       case FrameKind.Array:

@@ -14,7 +14,7 @@ after(() => rm(dir, { recursive: true, force: true }));
 const parse = async (text: string): Promise<unknown> => {
   const filePath = join(dir, `input-${counter++}.json`);
   await writeFile(filePath, text);
-  return BigJSON.parse(filePath);
+  return BigJSON.parse(filePath, { minimumFileSize: 1 });
 };
 
 const strToReadable = (text: string, chunkSize: number = 4): Readable => {
@@ -35,20 +35,20 @@ const multiMethodTest = (
 ) => {
   test(`[file]   ${testName}`, async () => {
     if (typeof input === 'string') {
-      testFn(() => parse(input));
+      await testFn(() => parse(input));
     } else {
       for (const i of input) {
-        testFn(() => parse(i));
+        await testFn(() => parse(i));
       }
     }
   });
-  test(`[stream] ${testName}`, () => {
+  test(`[stream] ${testName}`, async () => {
     if (typeof input === 'string') {
-      testFn(() => parseStream(input));
+      await testFn(() => parseStream(input));
     } else {
       for (const i of input) {
-        testFn(() => parseStream(i, input.length / 2));
-        testFn(() => parseStream(i, input.length / 3));
+        await testFn(() => parseStream(i, input.length / 2));
+        await testFn(() => parseStream(i, input.length / 3));
       }
     }
   });
@@ -79,7 +79,15 @@ describe('literals', () => {
     },
   );
 
-  multiMethodTest('truncated null throws', 'nul', async () => {
-    await assert.rejects(parseStream('nul', 1), /Unexpected end of input/i);
+  multiMethodTest('truncated null throws', 'nul', async (parse) => {
+    await assert.rejects(parse(), /Unexpected end of input/i);
   });
+
+  multiMethodTest(
+    'cannot have multiple sequential literals',
+    'true true',
+    async (parse) => {
+      await assert.rejects(parse(), /Expected input to end at byte/);
+    },
+  );
 });

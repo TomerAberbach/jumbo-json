@@ -36,5 +36,6 @@ export const ParserState = {
   Number: 4,
   String: 5,
   Escape: 6,
+  Done: 7,
 } as const;
 export type ParserState = typeof ParserState;

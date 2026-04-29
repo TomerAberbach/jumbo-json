@@ -18,6 +18,15 @@ export function tokenize(
   let consumed = 0;
   while (consumed < end) {
     switch (ctx.state) {
+      case ParserState.Done: {
+        consumed = ws(ctx, buf, consumed, end);
+        if (consumed >= end) {
+          return consumed;
+        }
+
+        throw ParseError.expectedEndOfInput(ctx.chunkBaseOffset + consumed);
+      }
+
       case ParserState.ExpectValue: {
         consumed = ws(ctx, buf, consumed, end);
         if (consumed >= end) {
@@ -94,7 +103,8 @@ const parseTrue = (
   isLastChunk: boolean,
 ): number | null => {
   if (index + 4 > end) {
-    if (isLastChunk) throw ParseError.endOfInput(ctx.chunkBaseOffset + index);
+    if (isLastChunk)
+      throw ParseError.unexpectedEndOfInput(ctx.chunkBaseOffset + index);
     return null;
   }
   if (buf.readUInt32LE(index) !== StringBytes.TrueLE) {
@@ -119,7 +129,8 @@ const parseFalse = (
   isLastChunk: boolean,
 ): number | null => {
   if (index + 5 > end) {
-    if (isLastChunk) throw ParseError.endOfInput(ctx.chunkBaseOffset + index);
+    if (isLastChunk)
+      throw ParseError.unexpectedEndOfInput(ctx.chunkBaseOffset + index);
     return null;
   }
   if (
@@ -147,7 +158,8 @@ const parseNull = (
   isLastChunk: boolean,
 ): number | null => {
   if (index + 4 > end) {
-    if (isLastChunk) throw ParseError.endOfInput(ctx.chunkBaseOffset + index);
+    if (isLastChunk)
+      throw ParseError.unexpectedEndOfInput(ctx.chunkBaseOffset + index);
     return null;
   }
   if (buf.readUInt32LE(index) !== StringBytes.NullLE) {

@@ -1,6 +1,6 @@
 import { stat, open, readFile } from 'node:fs/promises';
 import { InputBuffer } from './input-buffer.ts';
-import type { ParseFileConfig } from './types.ts';
+import { type ParseFileConfig } from './types.ts';
 import assert from 'node:assert';
 import { tokenize } from './tokenize.ts';
 import { ParseError } from './error.ts';
