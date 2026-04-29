@@ -12,6 +12,27 @@ export class ParserContext {
     this.state = ParserState.ExpectValue;
   }
 
+  get isNotInRoot() {
+    return this.frames[this.frames.length - 1]?.kind !== FrameKind.Root;
+  }
+
+  get isInObject() {
+    return this.frames[this.frames.length - 1]?.kind === FrameKind.Object;
+  }
+
+  get isInArray() {
+    return this.frames[this.frames.length - 1]?.kind === FrameKind.Array;
+  }
+
+  startArray() {
+    this.frames.push({ kind: FrameKind.Array, value: [] });
+    this.state = ParserState.ExpectValue;
+  }
+
+  endArray() {
+    this.commit(this.frames.pop()!.value);
+  }
+
   commit(value: unknown) {
     const frame = this.frames[this.frames.length - 1]!;
     switch (frame.kind) {
@@ -22,10 +43,12 @@ export class ParserContext {
 
       case FrameKind.Array:
         frame.value.push(value);
+        this.state = ParserState.ExpectCommaOrClose;
         break;
 
       case FrameKind.Object:
         frame.value[frame.pendingKey] = value;
+        this.state = ParserState.ExpectCommaOrClose;
         break;
     }
   }

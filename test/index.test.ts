@@ -59,7 +59,7 @@ describe('literals', () => {
     'null',
     ['null', '  null', 'null  ', ' null '],
     async (parse) => {
-      assert.strictEqual(await parse(), null);
+      assert.equal(await parse(), null);
     },
   );
 
@@ -67,7 +67,7 @@ describe('literals', () => {
     'true',
     ['true', ' true', 'true ', ' true '],
     async (parse) => {
-      assert.strictEqual(await parse(), true);
+      assert.equal(await parse(), true);
     },
   );
 
@@ -75,7 +75,7 @@ describe('literals', () => {
     'false',
     ['false', ' false', 'false ', ' false '],
     async (parse) => {
-      assert.strictEqual(await parse(), false);
+      assert.equal(await parse(), false);
     },
   );
 
@@ -88,6 +88,48 @@ describe('literals', () => {
     'true true',
     async (parse) => {
       await assert.rejects(parse(), /Expected input to end at byte/);
+    },
+  );
+});
+
+describe('arrays', () => {
+  multiMethodTest('empty array', ['[]', '[ ]', ' []', '[] '], async (parse) => {
+    const value = await parse();
+    if (!Array.isArray(value)) {
+      throw new Error(`Expected array, found ${JSON.stringify(value)}`);
+    }
+    assert.equal(JSON.stringify(value), '[]');
+  });
+
+  multiMethodTest('single element array', '[ true ]', async (parse) => {
+    const value = await parse();
+    if (!Array.isArray(value)) {
+      throw new Error(`Expected array, found ${JSON.stringify(value)}`);
+    }
+    assert.equal(JSON.stringify(value), '[true]');
+  });
+
+  multiMethodTest(
+    'multi element array',
+    '[ true, false, null ]',
+    async (parse) => {
+      const value = await parse();
+      if (!Array.isArray(value)) {
+        throw new Error(`Expected array, found ${JSON.stringify(value)}`);
+      }
+      assert.equal(JSON.stringify(value), '[true,false,null]');
+    },
+  );
+
+  multiMethodTest(
+    'nested arrays',
+    '[ [true, [false, [null]] ] ]',
+    async (parse) => {
+      const value = await parse();
+      if (!Array.isArray(value)) {
+        throw new Error(`Expected array, found ${JSON.stringify(value)}`);
+      }
+      assert.equal(JSON.stringify(value), '[[true,[false,[null]]]]');
     },
   );
 });

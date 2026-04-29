@@ -38,48 +38,92 @@ export function tokenize(
           const next = parseNull(ctx, buf, consumed, end, isLastChunk);
           if (next === null) return consumed;
           consumed = next;
+          if (ctx.isNotInRoot) {
+            ctx.state = ParserState.ExpectCommaOrClose;
+          }
           continue;
         } else if (char === Byte.LowerF) {
           const next = parseFalse(ctx, buf, consumed, end, isLastChunk);
           if (next === null) return consumed;
           consumed = next;
+          if (ctx.isNotInRoot) {
+            ctx.state = ParserState.ExpectCommaOrClose;
+          }
           continue;
         } else if (char === Byte.LowerT) {
           const next = parseTrue(ctx, buf, consumed, end, isLastChunk);
           if (next === null) return consumed;
           consumed = next;
+          if (ctx.isNotInRoot) {
+            ctx.state = ParserState.ExpectCommaOrClose;
+          }
+          continue;
+        } else if (char === Byte.LeftBracket) {
+          ctx.startArray();
+          consumed += 1;
+          continue;
+        } else if (char === Byte.RightBracket) {
+          ctx.endArray();
+          consumed += 1;
           continue;
         }
         break;
       }
 
       case ParserState.ExpectKeyOrClose: {
-        throw new Error('Not yet implemented');
+        throw new Error('ExpectKeyOrClose: Not yet implemented');
         break;
       }
 
       case ParserState.ExpectColon: {
-        throw new Error('Not yet implemented');
+        throw new Error('ExpectColon: Not yet implemented');
         break;
       }
 
       case ParserState.ExpectCommaOrClose: {
-        throw new Error('Not yet implemented');
+        consumed = ws(ctx, buf, consumed, end);
+        if (consumed >= end) {
+          return consumed;
+        }
+
+        const char = buf[consumed]!;
+        if (char === Byte.Comma) {
+          consumed += 1;
+          ctx.state = ctx.isInArray
+            ? ParserState.ExpectValue
+            : ParserState.ExpectKeyOrClose;
+        } else if (ctx.isInArray) {
+          if (char === Byte.RightBracket) {
+            ctx.endArray();
+            consumed += 1;
+          } else {
+            throw ParseError.expected(
+              ctx.chunkBaseOffset + consumed,
+              ']',
+              char,
+            );
+          }
+        } else if (ctx.isInObject) {
+          throw new Error('ExpectCommaOrClose for object: not yet implemented');
+        } else {
+          throw new Error('Unreachable');
+        }
+        continue;
         break;
       }
 
       case ParserState.Number: {
-        throw new Error('Not yet implemented');
+        throw new Error('Number: Not yet implemented');
         break;
       }
 
       case ParserState.String: {
-        throw new Error('Not yet implemented');
+        throw new Error('String: Not yet implemented');
         break;
       }
 
       case ParserState.Escape: {
-        throw new Error('Not yet implemented');
+        throw new Error('Escape: Not yet implemented');
         break;
       }
     }
