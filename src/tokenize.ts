@@ -38,25 +38,23 @@ export function tokenize(
           const next = parseNull(ctx, buf, consumed, end, isLastChunk);
           if (next === null) return consumed;
           consumed = next;
-          if (ctx.isNotInRoot) {
-            ctx.state = ParserState.ExpectCommaOrClose;
-          }
+          ctx.commit(null);
           continue;
         } else if (char === Byte.LowerF) {
           const next = parseFalse(ctx, buf, consumed, end, isLastChunk);
           if (next === null) return consumed;
           consumed = next;
-          if (ctx.isNotInRoot) {
-            ctx.state = ParserState.ExpectCommaOrClose;
-          }
+          ctx.commit(false);
           continue;
         } else if (char === Byte.LowerT) {
           const next = parseTrue(ctx, buf, consumed, end, isLastChunk);
           if (next === null) return consumed;
           consumed = next;
-          if (ctx.isNotInRoot) {
-            ctx.state = ParserState.ExpectCommaOrClose;
-          }
+          ctx.commit(true);
+          continue;
+        } else if (char === Byte.Quote) {
+          consumed += 1;
+          ctx.startString(consumed);
           continue;
         } else if (char === Byte.LeftBracket) {
           ctx.startArray();
@@ -118,7 +116,20 @@ export function tokenize(
       }
 
       case ParserState.String: {
-        throw new Error('String: Not yet implemented');
+        const stringStart = consumed;
+        let i = consumed;
+        for (; i < end; i++) {
+          if (buf[i] === Byte.Quote) {
+            ctx.endString(buf.subarray(stringStart, i));
+            consumed = i + 1;
+            break;
+          }
+        }
+        if (i === end) {
+          ctx.string.chunks.push(Buffer.from(buf.subarray(stringStart, end)));
+          return end;
+        }
+        continue;
         break;
       }
 
@@ -158,7 +169,6 @@ const parseTrue = (
       buf.subarray(index, index + 4),
     );
   }
-  ctx.commit(true);
   return index + 4;
 };
 
@@ -187,7 +197,6 @@ const parseFalse = (
       buf.subarray(index, index + 5),
     );
   }
-  ctx.commit(false);
   return index + 5;
 };
 
@@ -213,7 +222,6 @@ const parseNull = (
       buf.subarray(index, index + 4),
     );
   }
-  ctx.commit(null);
   return index + 4;
 };
 

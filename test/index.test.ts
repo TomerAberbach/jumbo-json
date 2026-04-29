@@ -31,24 +31,24 @@ const parseStream = (text: string, chunkSize: number = 4): Promise<unknown> =>
 const multiMethodTest = (
   testName: string,
   input: string | string[],
-  testFn: (parse: () => Promise<unknown>) => Promise<unknown>,
+  testFn: (parse: () => Promise<unknown>, input: string) => Promise<unknown>,
 ) => {
   test(`[file]   ${testName}`, async () => {
     if (typeof input === 'string') {
-      await testFn(() => parse(input));
+      await testFn(() => parse(input), input);
     } else {
       for (const i of input) {
-        await testFn(() => parse(i));
+        await testFn(() => parse(i), i);
       }
     }
   });
   test(`[stream] ${testName}`, async () => {
     if (typeof input === 'string') {
-      await testFn(() => parseStream(input));
+      await testFn(() => parseStream(input), input);
     } else {
       for (const i of input) {
-        await testFn(() => parseStream(i, input.length / 2));
-        await testFn(() => parseStream(i, input.length / 3));
+        await testFn(() => parseStream(i, input.length / 2), i);
+        await testFn(() => parseStream(i, input.length / 3), i);
       }
     }
   });
@@ -76,6 +76,16 @@ describe('literals', () => {
     ['false', ' false', 'false ', ' false '],
     async (parse) => {
       assert.equal(await parse(), false);
+    },
+  );
+
+  multiMethodTest(
+    'strings',
+    ['""', '"a"', '"abcdef"'],
+    async (parse, input) => {
+      const value = await parse();
+      assert.equal(typeof value, 'string');
+      assert.equal(JSON.stringify(value), input);
     },
   );
 
