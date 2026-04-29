@@ -17,7 +17,7 @@ const parse = async (text: string): Promise<unknown> => {
   return BigJSON.parse(filePath);
 };
 
-const strToReadable = (text: string, chunkSize: number): Readable => {
+const strToReadable = (text: string, chunkSize: number = 4): Readable => {
   const chunks: Buffer[] = [];
   for (let i = 0; i < text.length; i += chunkSize) {
     chunks.push(Buffer.from(text.slice(i, i + chunkSize)));
@@ -25,31 +25,61 @@ const strToReadable = (text: string, chunkSize: number): Readable => {
   return Readable.from(chunks);
 };
 
-const parseStream = (text: string, chunkSize: number): Promise<unknown> =>
+const parseStream = (text: string, chunkSize: number = 4): Promise<unknown> =>
   BigJSON.parse(strToReadable(text, chunkSize));
 
-describe('parse (file)', () => {
-  test('null', async () => assert.strictEqual(await parse('null'), null));
-  test('true', async () => assert.strictEqual(await parse('true'), true));
-  test('false', async () => assert.strictEqual(await parse('false'), false));
-  test('null with whitespace', async () =>
-    assert.strictEqual(await parse(' \t\r\nnull\n\r\t '), null));
-});
+const multiMethodTest = (
+  testName: string,
+  input: string | string[],
+  testFn: (parse: () => Promise<unknown>) => Promise<unknown>,
+) => {
+  test(`[file]   ${testName}`, async () => {
+    if (typeof input === 'string') {
+      testFn(() => parse(input));
+    } else {
+      for (const i of input) {
+        testFn(() => parse(i));
+      }
+    }
+  });
+  test(`[stream] ${testName}`, () => {
+    if (typeof input === 'string') {
+      testFn(() => parseStream(input));
+    } else {
+      for (const i of input) {
+        testFn(() => parseStream(i, input.length / 2));
+        testFn(() => parseStream(i, input.length / 3));
+      }
+    }
+  });
+};
 
-describe('parse (cross-chunk)', () => {
-  for (const chunkSize of [1, 2, 3, 4, 5]) {
-    test(`null with chunkSize=${chunkSize}`, async () => {
-      assert.strictEqual(await parseStream('null', chunkSize), null);
-    });
-    test(`true with chunkSize=${chunkSize}`, async () => {
-      assert.strictEqual(await parseStream('true', chunkSize), true);
-    });
-    test(`false with chunkSize=${chunkSize}`, async () => {
-      assert.strictEqual(await parseStream('false', chunkSize), false);
-    });
-  }
+describe('literals', () => {
+  multiMethodTest(
+    'null',
+    ['null', '  null', 'null  ', ' null '],
+    async (parse) => {
+      assert.strictEqual(await parse(), null);
+    },
+  );
 
-  test('truncated null throws', async () => {
+  multiMethodTest(
+    'true',
+    ['true', ' true', 'true ', ' true '],
+    async (parse) => {
+      assert.strictEqual(await parse(), true);
+    },
+  );
+
+  multiMethodTest(
+    'false',
+    ['false', ' false', 'false ', ' false '],
+    async (parse) => {
+      assert.strictEqual(await parse(), false);
+    },
+  );
+
+  multiMethodTest('truncated null throws', 'nul', async () => {
     await assert.rejects(parseStream('nul', 1), /Unexpected end of input/i);
   });
 });
