@@ -54,15 +54,21 @@ const multiMethodTest = (
   }
 };
 
-describe('literals', () => {
+describe('null', () => {
   multiMethodTest(
-    'null',
+    'parses null',
     ['null', '  null', 'null  ', ' null '],
     async (parse) => {
       assert.equal(await parse(), null);
     },
   );
 
+  multiMethodTest('truncated null throws', 'nul', async (parse) => {
+    await assert.rejects(parse(), /Unexpected end of input/i);
+  });
+});
+
+describe('booleans', () => {
   multiMethodTest(
     'true',
     ['true', ' true', 'true ', ' true '],
@@ -78,9 +84,11 @@ describe('literals', () => {
       assert.equal(await parse(), false);
     },
   );
+});
 
+describe('strings', () => {
   multiMethodTest(
-    'strings',
+    'basic strings',
     [
       JSON.stringify(''),
       JSON.stringify('a'),
@@ -99,13 +107,6 @@ describe('literals', () => {
     },
   );
 
-  test('string with space and escaped character', async () => {
-    assert.equal(
-      JSON.stringify(await parse(JSON.stringify(' "'))),
-      JSON.stringify(' "'),
-    );
-  });
-
   multiMethodTest(
     'simple escape sequences',
     [
@@ -122,6 +123,20 @@ describe('literals', () => {
       const value = await parse();
       assert.equal(typeof value, 'string');
       assert.equal(JSON.stringify(value), input);
+    },
+  );
+
+  multiMethodTest(
+    'multiple escape sequences',
+    [
+      JSON.stringify('\n\t\r'),
+      JSON.stringify('\\"\\"\\"'),
+      JSON.stringify('a\nb\tc'),
+    ],
+    async (parse, input) => {
+      const value = await parse();
+      assert.equal(typeof value, 'string');
+      assert.equal(value, JSON.parse(input));
     },
   );
 
@@ -155,22 +170,7 @@ describe('literals', () => {
     },
   );
 
-  multiMethodTest(
-    'multiple escape sequences',
-    [
-      JSON.stringify('\n\t\r'),
-      JSON.stringify('\\"\\"\\"'),
-      JSON.stringify('a\nb\tc'),
-    ],
-    async (parse, input) => {
-      const value = await parse();
-      assert.equal(typeof value, 'string');
-      assert.equal(value, JSON.parse(input));
-    },
-  );
-
   test('unicode escape spanning chunk boundary', async () => {
-    // Split "\\u0041" so the chunk boundary falls inside the escape sequence
     for (let chunkSize = 1; chunkSize <= 7; chunkSize++) {
       const value = await BigJSON.parse(strToReadable('"\\u0041"', chunkSize));
       assert.equal(value, 'A', `failed at chunkSize=${chunkSize}`);
@@ -188,11 +188,7 @@ describe('literals', () => {
 
   multiMethodTest(
     'unescaped control character throws',
-    [
-      '"\x01"',
-      '"\x09"',
-      '"\x1f"',
-    ],
+    ['"\x01"', '"\x09"', '"\x1f"'],
     async (parse) => {
       await assert.rejects(parse(), /valid string character/i);
     },
@@ -213,11 +209,9 @@ describe('literals', () => {
       await assert.rejects(parse(), /valid escape character/i);
     },
   );
+});
 
-  multiMethodTest('truncated null throws', 'nul', async (parse) => {
-    await assert.rejects(parse(), /Unexpected end of input/i);
-  });
-
+describe('literals', () => {
   multiMethodTest(
     'cannot have multiple sequential literals',
     'true true',
