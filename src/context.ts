@@ -7,6 +7,7 @@ export class ParserContext {
   state: ParserState[keyof ParserState];
   private stringChunks: (Buffer | string)[];
   private numberChunks: string[];
+  private parsingObjectKey: boolean;
 
   constructor() {
     this.chunkBaseOffset = 0;
@@ -14,6 +15,7 @@ export class ParserContext {
     this.state = ParserState.ExpectValue;
     this.stringChunks = [];
     this.numberChunks = [];
+    this.parsingObjectKey = false;
   }
 
   get isNotInRoot() {
@@ -37,6 +39,15 @@ export class ParserContext {
     this.commit(this.frames.pop()!.value);
   }
 
+  startObject() {
+    this.frames.push({ kind: FrameKind.Object, value: {}, pendingKey: '' });
+    this.state = ParserState.ExpectKeyOrClose;
+  }
+
+  endObject() {
+    this.commit(this.frames.pop()!.value);
+  }
+
   startNumber() {
     this.numberChunks = [];
     this.state = ParserState.Number;
@@ -48,6 +59,12 @@ export class ParserContext {
 
   getNumberSoFar(): string {
     return this.numberChunks.join('');
+  }
+
+  startObjectKey() {
+    this.parsingObjectKey = true;
+    this.stringChunks = [];
+    this.state = ParserState.String;
   }
 
   startString() {
@@ -64,7 +81,15 @@ export class ParserContext {
     const result = this.stringChunks
       .map((c) => (typeof c === 'string' ? c : c.toString()))
       .join('');
-    this.commit(result);
+    if (this.parsingObjectKey) {
+      this.parsingObjectKey = false;
+      const frame = this.frames[this.frames.length - 1]!;
+      (frame as Extract<Frame, { kind: FrameKind['Object'] }>).pendingKey =
+        result;
+      this.state = ParserState.ExpectColon;
+    } else {
+      this.commit(result);
+    }
   }
 
   commit(value: unknown) {

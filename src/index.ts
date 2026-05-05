@@ -26,27 +26,30 @@ async function parse(
     }
 
     const handle = await open(filePath);
-    let eof = false;
 
     try {
-      while (!eof) {
+      while (true) {
         const { buf, offset, capacity } = inputBuffer.reserve(16 * 1024);
         const { bytesRead } = await handle.read(buf, offset, capacity);
         inputBuffer.commit(bytesRead);
-        eof = bytesRead === 0;
 
-        const consumed = tokenize(
-          ctx,
-          inputBuffer.bytes,
-          inputBuffer.length,
-          eof,
-        );
+        if (bytesRead === 0) break;
+
+        const consumed = tokenize(ctx, inputBuffer.bytes, inputBuffer.length);
         ctx.chunkBaseOffset += consumed;
         inputBuffer.shift(consumed);
+      }
 
-        if (eof && inputBuffer.length > 0) {
-          throw ParseError.truncatedInput(ctx.chunkBaseOffset);
-        }
+      const consumed = tokenize(
+        ctx,
+        inputBuffer.bytes,
+        inputBuffer.length,
+        true,
+      );
+      ctx.chunkBaseOffset += consumed;
+      inputBuffer.shift(consumed);
+      if (inputBuffer.length > 0) {
+        throw ParseError.truncatedInput(ctx.chunkBaseOffset);
       }
     } finally {
       handle.close();

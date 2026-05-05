@@ -75,6 +75,10 @@ export function tokenize(
           ctx.endArray();
           consumed += 1;
           continue;
+        } else if (char === Byte.LeftBrace) {
+          ctx.startObject();
+          consumed += 1;
+          continue;
         } else if (
           char === Byte.Minus ||
           (char >= Byte.Zero && char <= Byte.Nine)
@@ -86,11 +90,50 @@ export function tokenize(
       }
 
       case ParserState.ExpectKeyOrClose: {
-        throw new Error('ExpectKeyOrClose: Not yet implemented');
+        consumed = ws(buf, consumed, end);
+        if (consumed >= end) {
+          return consumed;
+        }
+        const char = buf[consumed]!;
+        if (char === Byte.RightBrace) {
+          ctx.endObject();
+          consumed += 1;
+        } else if (char === Byte.Quote) {
+          consumed += 1;
+          ctx.startObjectKey();
+        } else {
+          throw ParseError.expected(ctx.chunkBaseOffset + consumed, '"', char);
+        }
+        continue;
+      }
+
+      case ParserState.ExpectKey: {
+        consumed = ws(buf, consumed, end);
+        if (consumed >= end) {
+          return consumed;
+        }
+        const char = buf[consumed]!;
+        if (char === Byte.Quote) {
+          consumed += 1;
+          ctx.startObjectKey();
+        } else {
+          throw ParseError.expected(ctx.chunkBaseOffset + consumed, '"', char);
+        }
+        continue;
       }
 
       case ParserState.ExpectColon: {
-        throw new Error('ExpectColon: Not yet implemented');
+        consumed = ws(buf, consumed, end);
+        if (consumed >= end) {
+          return consumed;
+        }
+        const char = buf[consumed]!;
+        if (char !== Byte.Colon) {
+          throw ParseError.expected(ctx.chunkBaseOffset + consumed, ':', char);
+        }
+        consumed += 1;
+        ctx.state = ParserState.ExpectValue;
+        continue;
       }
 
       case ParserState.ExpectCommaOrClose: {
@@ -104,7 +147,7 @@ export function tokenize(
           consumed += 1;
           ctx.state = ctx.isInArray
             ? ParserState.ExpectValue
-            : ParserState.ExpectKeyOrClose;
+            : ParserState.ExpectKey;
         } else if (ctx.isInArray) {
           if (char === Byte.RightBracket) {
             ctx.endArray();
@@ -117,7 +160,16 @@ export function tokenize(
             );
           }
         } else if (ctx.isInObject) {
-          throw new Error('ExpectCommaOrClose for object: not yet implemented');
+          if (char === Byte.RightBrace) {
+            ctx.endObject();
+            consumed += 1;
+          } else {
+            throw ParseError.expected(
+              ctx.chunkBaseOffset + consumed,
+              '}',
+              char,
+            );
+          }
         } else {
           throw new Error('Unreachable');
         }
@@ -151,6 +203,7 @@ export function tokenize(
       case ParserState.String: {
         let chunkStart = consumed;
         let i = consumed;
+        let stringClosed = false;
         for (; i < end; i++) {
           const char = buf[i]!;
           if (char === Byte.Backslash) {
@@ -243,7 +296,9 @@ export function tokenize(
             }
           } else if (char === Byte.Quote) {
             ctx.endString(buf.subarray(chunkStart, i));
-            return i + 1;
+            consumed = i + 1;
+            stringClosed = true;
+            break;
           } else if (char < 0x20) {
             throw ParseError.expected(
               ctx.chunkBaseOffset + i,
@@ -253,13 +308,16 @@ export function tokenize(
           }
         }
 
-        if (isLastChunk) {
-          throw ParseError.unexpectedEndOfInput(ctx.chunkBaseOffset + i);
+        if (!stringClosed) {
+          if (isLastChunk) {
+            throw ParseError.unexpectedEndOfInput(ctx.chunkBaseOffset + i);
+          }
+          if (i > chunkStart) {
+            ctx.addStringChunk(Buffer.from(buf.subarray(chunkStart, i)));
+          }
+          return i;
         }
-        if (i > chunkStart) {
-          ctx.addStringChunk(Buffer.from(buf.subarray(chunkStart, i)));
-        }
-        return i;
+        continue;
       }
     }
     throw ParseError.expected(

@@ -276,6 +276,85 @@ describe('numbers', () => {
   });
 });
 
+describe('objects', () => {
+  multiMethodTest(
+    'empty object',
+    ['{}', '{ }', ' {}', '{} '],
+    async (parse) => {
+      const value = await parse();
+      assert.deepEqual(value, {});
+    },
+  );
+
+  multiMethodTest(
+    'single key-value pair',
+    ['{"a":1}', '{ "a" : 1 }', '{"key":"value"}'],
+    async (parse, input) => {
+      assert.deepEqual(await parse(), JSON.parse(input));
+    },
+  );
+
+  multiMethodTest(
+    'multiple key-value pairs',
+    ['{"a":1,"b":2,"c":3}', '{"x":true,"y":false,"z":null}'],
+    async (parse, input) => {
+      assert.deepEqual(await parse(), JSON.parse(input));
+    },
+  );
+
+  multiMethodTest(
+    'nested objects',
+    ['{"a":{"b":{"c":1}}}', '{"outer":{"inner":{}}}'],
+    async (parse, input) => {
+      assert.deepEqual(await parse(), JSON.parse(input));
+    },
+  );
+
+  multiMethodTest(
+    'mixed value types',
+    ['{"s":"hello","n":42,"f":3.14,"b":true,"nil":null,"arr":[1,2]}'],
+    async (parse, input) => {
+      assert.deepEqual(await parse(), JSON.parse(input));
+    },
+  );
+
+  multiMethodTest(
+    'objects inside arrays',
+    ['[{"a":1},{"b":2}]', '[{},[{}]]'],
+    async (parse, input) => {
+      assert.deepEqual(await parse(), JSON.parse(input));
+    },
+  );
+
+  multiMethodTest(
+    'escaped characters in keys',
+    ['{"key\\nwith\\nnewlines":1}', '{"\\u0041":2}'],
+    async (parse, input) => {
+      assert.deepEqual(await parse(), JSON.parse(input));
+    },
+  );
+
+  multiMethodTest('missing colon throws', '{"a" 1}', async (parse) => {
+    await assert.rejects(parse(), /':'/);
+  });
+
+  multiMethodTest(
+    'missing key quotes throws',
+    ['{a:1}', '{1:2}'],
+    async (parse) => {
+      await assert.rejects(parse(), /'"'/);
+    },
+  );
+
+  multiMethodTest('trailing comma throws', '{"a":1,}', async (parse) => {
+    await assert.rejects(parse(), /'"'/);
+  });
+
+  multiMethodTest('missing closing brace throws', '{"a":1', async (parse) => {
+    await assert.rejects(parse(), /Unexpected end of input/i);
+  });
+});
+
 describe('arrays', () => {
   multiMethodTest('empty array', ['[]', '[ ]', ' []', '[] '], async (parse) => {
     const value = await parse();

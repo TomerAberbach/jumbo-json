@@ -31,10 +31,11 @@ export type Frame =
 export const ParserState = {
   ExpectValue: 0,
   ExpectKeyOrClose: 1,
-  ExpectColon: 2,
-  ExpectCommaOrClose: 3,
-  Number: 4,
-  String: 5,
-  Done: 6,
+  ExpectKey: 2,
+  ExpectColon: 3,
+  ExpectCommaOrClose: 4,
+  Number: 5,
+  String: 6,
+  Done: 7,
 } as const;
 export type ParserState = typeof ParserState;
