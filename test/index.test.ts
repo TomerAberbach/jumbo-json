@@ -4,7 +4,7 @@ import { writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import { BigJSON } from '../src/index.ts';
+import { JumboJSON } from '../src/index.ts';
 
 const dir = await mkdtemp(join(tmpdir(), 'big-json-'));
 let counter = 0;
@@ -14,7 +14,7 @@ after(() => rm(dir, { recursive: true, force: true }));
 const parse = async (text: string): Promise<unknown> => {
   const filePath = join(dir, `input-${counter++}.json`);
   await writeFile(filePath, text);
-  return BigJSON.parse(filePath, { minimumFileSize: 1 });
+  return JumboJSON.parse(filePath, { minimumFileSize: 1 });
 };
 
 const strToReadable = (text: string, chunkSize: number = 4): Readable => {
@@ -26,7 +26,7 @@ const strToReadable = (text: string, chunkSize: number = 4): Readable => {
 };
 
 const parseStream = (text: string, chunkSize: number = 4): Promise<unknown> =>
-  BigJSON.parse(strToReadable(text, chunkSize));
+  JumboJSON.parse(strToReadable(text, chunkSize));
 
 const multiMethodTest = (
   testName: string,
@@ -169,14 +169,16 @@ describe('strings', () => {
 
   test('unicode escape spanning chunk boundary', async () => {
     for (let chunkSize = 1; chunkSize <= 7; chunkSize++) {
-      const value = await BigJSON.parse(strToReadable('"\\u0041"', chunkSize));
+      const value = await JumboJSON.parse(
+        strToReadable('"\\u0041"', chunkSize),
+      );
       assert.equal(value, 'A', `failed at chunkSize=${chunkSize}`);
     }
   });
 
   test('surrogate pair spanning chunk boundary', async () => {
     for (let chunkSize = 1; chunkSize <= 11; chunkSize++) {
-      const value = await BigJSON.parse(
+      const value = await JumboJSON.parse(
         strToReadable('"\\uD83D\\uDE00"', chunkSize),
       );
       assert.equal(value, '😀', `failed at chunkSize=${chunkSize}`);
@@ -246,7 +248,7 @@ describe('numbers', () => {
 
   test('number spanning chunk boundary', async () => {
     for (let chunkSize = 1; chunkSize <= 6; chunkSize++) {
-      const value = await BigJSON.parse(strToReadable('123.45', chunkSize));
+      const value = await JumboJSON.parse(strToReadable('123.45', chunkSize));
       assert.equal(value, 123.45, `failed at chunkSize=${chunkSize}`);
     }
   });

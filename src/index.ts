@@ -82,6 +82,6 @@ async function parse(
   return ctx.frames[0]!.value;
 }
 
-export const BigJSON = {
+export const JumboJSON = {
   parse,
 };
