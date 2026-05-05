@@ -1,7 +1,18 @@
 {
   "name": "jumbo-json",
   "version": "0.1.0",
-  "description": "",
+  "description": "For when you have a Boeing 747 worth of JSON you want in memory",
+  "keywords": [
+    "json",
+    "parser",
+    "streaming",
+    "large",
+    "file"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mikecluck/jumbo-json.git"
+  },
   "author": "Mike Cluck",
   "license": "MIT",
   "type": "module",
