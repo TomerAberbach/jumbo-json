@@ -159,10 +159,7 @@ describe('strings', () => {
 
   multiMethodTest(
     'unicode surrogate pairs',
-    [
-      '"\\uD83D\\uDE00"',
-      '"\\uD83C\\uDF08"',
-    ],
+    ['"\\uD83D\\uDE00"', '"\\uD83C\\uDF08"'],
     async (parse, input) => {
       const value = await parse();
       assert.equal(typeof value, 'string');
@@ -202,13 +199,9 @@ describe('strings', () => {
     },
   );
 
-  multiMethodTest(
-    'invalid escape sequence throws',
-    '"\\q"',
-    async (parse) => {
-      await assert.rejects(parse(), /valid escape character/i);
-    },
-  );
+  multiMethodTest('invalid escape sequence throws', '"\\q"', async (parse) => {
+    await assert.rejects(parse(), /valid escape character/i);
+  });
 });
 
 describe('literals', () => {
@@ -219,6 +212,68 @@ describe('literals', () => {
       await assert.rejects(parse(), /Expected input to end at byte/);
     },
   );
+});
+
+describe('numbers', () => {
+  multiMethodTest(
+    'integers',
+    ['0', '1', '-1', '123', '-456', '9007199254740991', '-9007199254740991'],
+    async (parse, input) => {
+      assert.equal(await parse(), JSON.parse(input));
+    },
+  );
+
+  multiMethodTest(
+    'floats',
+    ['0.0', '0.5', '-1.5', '3.14159', '-0.001'],
+    async (parse, input) => {
+      assert.equal(await parse(), JSON.parse(input));
+    },
+  );
+
+  multiMethodTest(
+    'scientific notation',
+    ['1e10', '1E10', '1e+10', '1e-10', '-1.5e+3', '2.5E-4'],
+    async (parse, input) => {
+      assert.equal(await parse(), JSON.parse(input));
+    },
+  );
+
+  multiMethodTest('negative zero', ['-0', '-0.0'], async (parse) => {
+    const value = await parse();
+    assert.ok(Object.is(value, -0), 'expected -0');
+  });
+
+  test('number spanning chunk boundary', async () => {
+    for (let chunkSize = 1; chunkSize <= 6; chunkSize++) {
+      const value = await BigJSON.parse(strToReadable('123.45', chunkSize));
+      assert.equal(value, 123.45, `failed at chunkSize=${chunkSize}`);
+    }
+  });
+
+  multiMethodTest('leading zero is invalid', ['01', '01.5'], async (parse) => {
+    await assert.rejects(parse(), /valid number/i);
+  });
+
+  multiMethodTest('leading dot is invalid', '.5', async (parse) => {
+    await assert.rejects(parse(), /valid JSON character/i);
+  });
+
+  multiMethodTest('trailing dot is invalid', ['1.', '-1.'], async (parse) => {
+    await assert.rejects(parse(), /valid number/i);
+  });
+
+  multiMethodTest(
+    'bare exponent is invalid',
+    ['1e', '1e+', '1e-'],
+    async (parse) => {
+      await assert.rejects(parse(), /valid number/i);
+    },
+  );
+
+  multiMethodTest('double minus is invalid', '--1', async (parse) => {
+    await assert.rejects(parse(), /valid number/i);
+  });
 });
 
 describe('arrays', () => {

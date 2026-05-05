@@ -59,16 +59,11 @@ async function parse(
       inputBuffer.shift(consumed);
     }
 
+    const consumed = tokenize(ctx, inputBuffer.bytes, inputBuffer.length, true);
+    ctx.chunkBaseOffset += consumed;
+    inputBuffer.shift(consumed);
     if (inputBuffer.length > 0) {
-      const consumed = tokenize(
-        ctx,
-        inputBuffer.bytes,
-        inputBuffer.length,
-        true,
-      );
-      if (consumed < inputBuffer.length) {
-        throw ParseError.truncatedInput(ctx.chunkBaseOffset);
-      }
+      throw ParseError.truncatedInput(ctx.chunkBaseOffset);
     }
   }
 

@@ -15,6 +15,17 @@ export function tokenize(
   end: number,
   isLastChunk: boolean = false,
 ): number {
+  // Numbers end implicitly at EOF. When the final tokenize call arrives with
+  // an empty buffer, the while loop below won't run, so we finalize here
+  if (isLastChunk && end === 0 && ctx.state === ParserState.Number) {
+    const str = ctx.getNumberSoFar();
+    if (!NUMBER_RE.test(str)) {
+      throw ParseError.expected(ctx.chunkBaseOffset, 'valid number', str);
+    }
+    ctx.commit(Number(str));
+    return 0;
+  }
+
   let consumed = 0;
   while (consumed < end) {
     switch (ctx.state) {
@@ -64,6 +75,12 @@ export function tokenize(
           ctx.endArray();
           consumed += 1;
           continue;
+        } else if (
+          char === Byte.Minus ||
+          (char >= Byte.Zero && char <= Byte.Nine)
+        ) {
+          ctx.startNumber();
+          continue;
         }
         break;
       }
@@ -108,7 +125,27 @@ export function tokenize(
       }
 
       case ParserState.Number: {
-        throw new Error('Number: Not yet implemented');
+        let i = consumed;
+        while (i < end && isNumberChar(buf[i]!)) {
+          i++;
+        }
+
+        if (i < end || isLastChunk) {
+          const str = ctx.getNumberSoFar() + buf.toString('ascii', consumed, i);
+          if (!NUMBER_RE.test(str)) {
+            throw ParseError.expected(
+              ctx.chunkBaseOffset + consumed,
+              'valid number',
+              str,
+            );
+          }
+          ctx.commit(Number(str));
+          consumed = i;
+        } else {
+          ctx.addNumberChunk(buf.toString('ascii', consumed, i));
+          return i;
+        }
+        continue;
       }
 
       case ParserState.String: {
@@ -155,11 +192,16 @@ export function tokenize(
                 // High surrogate — look for low surrogate following it
                 if (i + 12 > end) {
                   if (i > chunkStart) {
-                    ctx.addStringChunk(Buffer.from(buf.subarray(chunkStart, i)));
+                    ctx.addStringChunk(
+                      Buffer.from(buf.subarray(chunkStart, i)),
+                    );
                   }
                   return i;
                 }
-                if (buf[i + 6] === Byte.Backslash && buf[i + 7] === Byte.LowerU) {
+                if (
+                  buf[i + 6] === Byte.Backslash &&
+                  buf[i + 7] === Byte.LowerU
+                ) {
                   const lowHex = buf.toString('ascii', i + 8, i + 12);
                   if (!/^[0-9a-fA-F]{4}$/.test(lowHex)) {
                     throw ParseError.expected(
@@ -175,7 +217,9 @@ export function tokenize(
                       ((codePoint - 0xd800) << 10) +
                       (lowSurrogate - 0xdc00);
                     if (i > chunkStart) {
-                      ctx.addStringChunk(Buffer.from(buf.subarray(chunkStart, i)));
+                      ctx.addStringChunk(
+                        Buffer.from(buf.subarray(chunkStart, i)),
+                      );
                     }
                     ctx.addStringChunk(String.fromCodePoint(codePoint));
                     i += 11;
@@ -304,6 +348,16 @@ const parseNull = (
   }
   return index + 4;
 };
+
+const NUMBER_RE = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+
+const isNumberChar = (char: number): boolean =>
+  (char >= Byte.Zero && char <= Byte.Nine) ||
+  char === Byte.Dot ||
+  char === Byte.LowerE ||
+  char === Byte.UpperE ||
+  char === Byte.Minus ||
+  char === Byte.Plus;
 
 const ws = (buf: Buffer, index: number, end: number): number => {
   while (index < end) {
