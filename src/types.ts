@@ -35,7 +35,6 @@ export const ParserState = {
   ExpectCommaOrClose: 3,
   Number: 4,
   String: 5,
-  Escape: 6,
-  Done: 7,
+  Done: 6,
 } as const;
 export type ParserState = typeof ParserState;

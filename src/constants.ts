@@ -42,3 +42,14 @@ export const StringBytes = {
   NullLE: 0x6c6c756e, // bytes: n u l l
   FalsLE: 0x736c6166, // bytes: f a l s
 };
+
+export const SimpleEscapeSequence: Record<number, string | undefined> = {
+  [Byte.Quote]: '"',
+  [Byte.Backslash]: '\\',
+  [Byte.Solidus]: '/',
+  [Byte.LowerB]: '\b',
+  [Byte.LowerF]: '\f',
+  [Byte.LowerN]: '\n',
+  [Byte.LowerR]: '\r',
+  [Byte.LowerT]: '\t',
+};

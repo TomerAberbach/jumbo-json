@@ -5,19 +5,13 @@ export class ParserContext {
   chunkBaseOffset: number;
   frames: Frame[];
   state: ParserState[keyof ParserState];
-  string: {
-    chunks: Buffer[];
-    hasEscapes: boolean;
-  };
+  private stringChunks: (Buffer | string)[];
 
   constructor() {
     this.chunkBaseOffset = 0;
     this.frames = [{ kind: FrameKind.Root, value: undefined }];
     this.state = ParserState.ExpectValue;
-    this.string = {
-      chunks: [],
-      hasEscapes: false,
-    };
+    this.stringChunks = [];
   }
 
   get isNotInRoot() {
@@ -41,15 +35,21 @@ export class ParserContext {
     this.commit(this.frames.pop()!.value);
   }
 
-  startString(index: number) {
-    this.string.chunks = [];
-    this.string.hasEscapes = false;
+  startString() {
+    this.stringChunks = [];
     this.state = ParserState.String;
   }
 
+  addStringChunk(chunk: string | Buffer) {
+    this.stringChunks.push(chunk);
+  }
+
   endString(lastChunk: Buffer) {
-    this.string.chunks.push(lastChunk);
-    this.commit(Buffer.concat(this.string.chunks).toString('utf8'));
+    this.stringChunks.push(lastChunk);
+    const result = this.stringChunks
+      .map((c) => (typeof c === 'string' ? c : c.toString()))
+      .join('');
+    this.commit(result);
   }
 
   commit(value: unknown) {

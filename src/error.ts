@@ -1,5 +1,6 @@
 export class ParseError extends Error {
   readonly offset: number;
+
   private constructor(offset: number, message: string) {
     super(message);
     this.offset = offset;

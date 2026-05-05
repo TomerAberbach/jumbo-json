@@ -1,4 +1,4 @@
-import { Byte, StringBytes } from './constants.ts';
+import { Byte, SimpleEscapeSequence, StringBytes } from './constants.ts';
 import { ParserContext } from './context.ts';
 import { ParseError } from './error.ts';
 import { ParserState } from './types.ts';
@@ -19,7 +19,7 @@ export function tokenize(
   while (consumed < end) {
     switch (ctx.state) {
       case ParserState.Done: {
-        consumed = ws(ctx, buf, consumed, end);
+        consumed = ws(buf, consumed, end);
         if (consumed >= end) {
           return consumed;
         }
@@ -28,7 +28,7 @@ export function tokenize(
       }
 
       case ParserState.ExpectValue: {
-        consumed = ws(ctx, buf, consumed, end);
+        consumed = ws(buf, consumed, end);
         if (consumed >= end) {
           return consumed;
         }
@@ -54,7 +54,7 @@ export function tokenize(
           continue;
         } else if (char === Byte.Quote) {
           consumed += 1;
-          ctx.startString(consumed);
+          ctx.startString();
           continue;
         } else if (char === Byte.LeftBracket) {
           ctx.startArray();
@@ -70,16 +70,14 @@ export function tokenize(
 
       case ParserState.ExpectKeyOrClose: {
         throw new Error('ExpectKeyOrClose: Not yet implemented');
-        break;
       }
 
       case ParserState.ExpectColon: {
         throw new Error('ExpectColon: Not yet implemented');
-        break;
       }
 
       case ParserState.ExpectCommaOrClose: {
-        consumed = ws(ctx, buf, consumed, end);
+        consumed = ws(buf, consumed, end);
         if (consumed >= end) {
           return consumed;
         }
@@ -107,35 +105,117 @@ export function tokenize(
           throw new Error('Unreachable');
         }
         continue;
-        break;
       }
 
       case ParserState.Number: {
         throw new Error('Number: Not yet implemented');
-        break;
       }
 
       case ParserState.String: {
-        const stringStart = consumed;
+        let chunkStart = consumed;
         let i = consumed;
         for (; i < end; i++) {
-          if (buf[i] === Byte.Quote) {
-            ctx.endString(buf.subarray(stringStart, i));
-            consumed = i + 1;
-            break;
+          const char = buf[i]!;
+          if (char === Byte.Backslash) {
+            // Need at least one more byte to know the escape type
+            if (i + 1 >= end) {
+              if (i > chunkStart) {
+                ctx.addStringChunk(Buffer.from(buf.subarray(chunkStart, i)));
+              }
+              return i;
+            }
+            const nextChar = buf[i + 1]!;
+            const simple = SimpleEscapeSequence[nextChar];
+            if (simple !== undefined) {
+              if (i > chunkStart) {
+                ctx.addStringChunk(Buffer.from(buf.subarray(chunkStart, i)));
+              }
+              ctx.addStringChunk(simple);
+              i += 1;
+              chunkStart = i + 1;
+            } else if (nextChar === Byte.LowerU) {
+              // \uXXXX — need 6 bytes total (\, u, 4 hex digits)
+              if (i + 6 > end) {
+                if (i > chunkStart) {
+                  ctx.addStringChunk(Buffer.from(buf.subarray(chunkStart, i)));
+                }
+                return i;
+              }
+              const hex = buf.toString('ascii', i + 2, i + 6);
+              if (!/^[0-9a-fA-F]{4}$/.test(hex)) {
+                throw ParseError.expected(
+                  ctx.chunkBaseOffset + i + 2,
+                  'hex digit',
+                  buf[i + 2]!,
+                );
+              }
+              let codePoint = parseInt(hex, 16);
+              // Handle surrogate pairs
+              if (codePoint >= 0xd800 && codePoint <= 0xdbff) {
+                // High surrogate — look for low surrogate following it
+                if (i + 12 > end) {
+                  if (i > chunkStart) {
+                    ctx.addStringChunk(Buffer.from(buf.subarray(chunkStart, i)));
+                  }
+                  return i;
+                }
+                if (buf[i + 6] === Byte.Backslash && buf[i + 7] === Byte.LowerU) {
+                  const lowHex = buf.toString('ascii', i + 8, i + 12);
+                  if (!/^[0-9a-fA-F]{4}$/.test(lowHex)) {
+                    throw ParseError.expected(
+                      ctx.chunkBaseOffset + i + 8,
+                      'hex digit',
+                      buf[i + 8]!,
+                    );
+                  }
+                  const lowSurrogate = parseInt(lowHex, 16);
+                  if (lowSurrogate >= 0xdc00 && lowSurrogate <= 0xdfff) {
+                    codePoint =
+                      0x10000 +
+                      ((codePoint - 0xd800) << 10) +
+                      (lowSurrogate - 0xdc00);
+                    if (i > chunkStart) {
+                      ctx.addStringChunk(Buffer.from(buf.subarray(chunkStart, i)));
+                    }
+                    ctx.addStringChunk(String.fromCodePoint(codePoint));
+                    i += 11;
+                    chunkStart = i + 1;
+                    continue;
+                  }
+                }
+              }
+              if (i > chunkStart) {
+                ctx.addStringChunk(Buffer.from(buf.subarray(chunkStart, i)));
+              }
+              ctx.addStringChunk(String.fromCodePoint(codePoint));
+              i += 5;
+              chunkStart = i + 1;
+            } else {
+              throw ParseError.expected(
+                ctx.chunkBaseOffset + i + 1,
+                'valid escape character',
+                nextChar,
+              );
+            }
+          } else if (char === Byte.Quote) {
+            ctx.endString(buf.subarray(chunkStart, i));
+            return i + 1;
+          } else if (char < 0x20) {
+            throw ParseError.expected(
+              ctx.chunkBaseOffset + i,
+              'valid string character',
+              char,
+            );
           }
         }
-        if (i === end) {
-          ctx.string.chunks.push(Buffer.from(buf.subarray(stringStart, end)));
-          return end;
-        }
-        continue;
-        break;
-      }
 
-      case ParserState.Escape: {
-        throw new Error('Escape: Not yet implemented');
-        break;
+        if (isLastChunk) {
+          throw ParseError.unexpectedEndOfInput(ctx.chunkBaseOffset + i);
+        }
+        if (i > chunkStart) {
+          ctx.addStringChunk(Buffer.from(buf.subarray(chunkStart, i)));
+        }
+        return i;
       }
     }
     throw ParseError.expected(
@@ -225,12 +305,7 @@ const parseNull = (
   return index + 4;
 };
 
-const ws = (
-  ctx: ParserContext,
-  buf: Buffer,
-  index: number,
-  end: number,
-): number => {
+const ws = (buf: Buffer, index: number, end: number): number => {
   while (index < end) {
     const char = buf[index];
     if (

@@ -33,25 +33,25 @@ const multiMethodTest = (
   input: string | string[],
   testFn: (parse: () => Promise<unknown>, input: string) => Promise<unknown>,
 ) => {
-  test(`[file]   ${testName}`, async () => {
-    if (typeof input === 'string') {
+  if (typeof input === 'string') {
+    test(`[file]   ${testName}`, async () => {
       await testFn(() => parse(input), input);
-    } else {
-      for (const i of input) {
-        await testFn(() => parse(i), i);
-      }
-    }
-  });
-  test(`[stream] ${testName}`, async () => {
-    if (typeof input === 'string') {
+    });
+    test(`[stream] ${testName}`, async () => {
       await testFn(() => parseStream(input), input);
-    } else {
-      for (const i of input) {
+    });
+  } else {
+    for (const i of input) {
+      const inputName = i.length > 5 ? `${i.slice(0, 5)}...` : i;
+      test(`[file]   ${testName} (${inputName})`, async () => {
+        await testFn(() => parse(i), i);
+      });
+      test(`[stream] ${testName} (${inputName})`, async () => {
         await testFn(() => parseStream(i, input.length / 2), i);
         await testFn(() => parseStream(i, input.length / 3), i);
-      }
+      });
     }
-  });
+  }
 };
 
 describe('literals', () => {
@@ -81,11 +81,136 @@ describe('literals', () => {
 
   multiMethodTest(
     'strings',
-    ['""', '"a"', '"abcdef"'],
+    [
+      JSON.stringify(''),
+      JSON.stringify('a'),
+      JSON.stringify(' a'),
+      JSON.stringify('abcdef'),
+      JSON.stringify('"'),
+      JSON.stringify(' "'),
+      JSON.stringify('" '),
+      JSON.stringify(' " '),
+      JSON.stringify('\n'),
+    ],
     async (parse, input) => {
       const value = await parse();
       assert.equal(typeof value, 'string');
       assert.equal(JSON.stringify(value), input);
+    },
+  );
+
+  test('string with space and escaped character', async () => {
+    assert.equal(
+      JSON.stringify(await parse(JSON.stringify(' "'))),
+      JSON.stringify(' "'),
+    );
+  });
+
+  multiMethodTest(
+    'simple escape sequences',
+    [
+      JSON.stringify('"'),
+      JSON.stringify('\\'),
+      JSON.stringify('/'),
+      JSON.stringify('\b'),
+      JSON.stringify('\f'),
+      JSON.stringify('\n'),
+      JSON.stringify('\r'),
+      JSON.stringify('\t'),
+    ],
+    async (parse, input) => {
+      const value = await parse();
+      assert.equal(typeof value, 'string');
+      assert.equal(JSON.stringify(value), input);
+    },
+  );
+
+  multiMethodTest(
+    'unicode escape sequences',
+    [
+      '"\\u0041"',
+      '"\\u00e9"',
+      '"\\u4e2d"',
+      '"\\u0000"',
+      '"\\uFFFF"',
+      '"a\\u0041b"',
+    ],
+    async (parse, input) => {
+      const value = await parse();
+      assert.equal(typeof value, 'string');
+      assert.equal(value, JSON.parse(input));
+    },
+  );
+
+  multiMethodTest(
+    'unicode surrogate pairs',
+    [
+      '"\\uD83D\\uDE00"',
+      '"\\uD83C\\uDF08"',
+    ],
+    async (parse, input) => {
+      const value = await parse();
+      assert.equal(typeof value, 'string');
+      assert.equal(value, JSON.parse(input));
+    },
+  );
+
+  multiMethodTest(
+    'multiple escape sequences',
+    [
+      JSON.stringify('\n\t\r'),
+      JSON.stringify('\\"\\"\\"'),
+      JSON.stringify('a\nb\tc'),
+    ],
+    async (parse, input) => {
+      const value = await parse();
+      assert.equal(typeof value, 'string');
+      assert.equal(value, JSON.parse(input));
+    },
+  );
+
+  test('unicode escape spanning chunk boundary', async () => {
+    // Split "\\u0041" so the chunk boundary falls inside the escape sequence
+    for (let chunkSize = 1; chunkSize <= 7; chunkSize++) {
+      const value = await BigJSON.parse(strToReadable('"\\u0041"', chunkSize));
+      assert.equal(value, 'A', `failed at chunkSize=${chunkSize}`);
+    }
+  });
+
+  test('surrogate pair spanning chunk boundary', async () => {
+    for (let chunkSize = 1; chunkSize <= 11; chunkSize++) {
+      const value = await BigJSON.parse(
+        strToReadable('"\\uD83D\\uDE00"', chunkSize),
+      );
+      assert.equal(value, '😀', `failed at chunkSize=${chunkSize}`);
+    }
+  });
+
+  multiMethodTest(
+    'unescaped control character throws',
+    [
+      '"\x01"',
+      '"\x09"',
+      '"\x1f"',
+    ],
+    async (parse) => {
+      await assert.rejects(parse(), /valid string character/i);
+    },
+  );
+
+  multiMethodTest(
+    'unterminated string throws',
+    ['"hello', '"hello\\n'],
+    async (parse) => {
+      await assert.rejects(parse(), /Unexpected end of input/i);
+    },
+  );
+
+  multiMethodTest(
+    'invalid escape sequence throws',
+    '"\\q"',
+    async (parse) => {
+      await assert.rejects(parse(), /valid escape character/i);
     },
   );
 
