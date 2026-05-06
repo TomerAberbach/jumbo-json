@@ -1,11 +1,13 @@
 import type { Frame } from './types.ts';
 import { FrameKind, ParserState } from './types.ts';
 
+const decoder = new TextDecoder();
+
 export class ParserContext {
   chunkBaseOffset: number;
   frames: Frame[];
   state: ParserState[keyof ParserState];
-  private stringChunks: (Buffer | string)[];
+  private stringChunks: (Uint8Array | string)[];
   private numberChunks: string[];
   private parsingObjectKey: boolean;
 
@@ -72,14 +74,14 @@ export class ParserContext {
     this.state = ParserState.String;
   }
 
-  addStringChunk(chunk: string | Buffer) {
+  addStringChunk(chunk: string | Uint8Array) {
     this.stringChunks.push(chunk);
   }
 
-  endString(lastChunk: Buffer) {
+  endString(lastChunk: Uint8Array) {
     this.stringChunks.push(lastChunk);
     const result = this.stringChunks
-      .map((c) => (typeof c === 'string' ? c : c.toString()))
+      .map((c) => (typeof c === 'string' ? c : decoder.decode(c)))
       .join('');
     if (this.parsingObjectKey) {
       this.parsingObjectKey = false;

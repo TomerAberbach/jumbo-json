@@ -18,30 +18,42 @@ chunks of JSON all at once.
 
 ## Usage
 
-### Parse from a file
+`JumboJSON.parse` accepts any [`ReadableStream<Uint8Array>`](https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream), so it works in any JS runtime.
+
+### Parse from a file (Node.js, zero-copy)
+
+Use `FileHandle.readableWebStream()` so the OS writes file bytes directly into
+the stream's buffer.
+
+```js
+import { JumboJSON } from 'jumbo-json';
+import { open } from 'node:fs/promises';
+
+const handle = await open('/path/to/huge.json');
+try {
+  const data = await JumboJSON.parse(handle.readableWebStream());
+} finally {
+  await handle.close();
+}
+```
+
+### Parse from a fetch response (browser / edge)
 
 ```js
 import { JumboJSON } from 'jumbo-json';
 
-const data = await JumboJSON.parse('/path/to/huge.json');
-```
-
-Files smaller than 1MB are passed through `JSON.parse` automatically. You can
-adjust that threshold:
-
-```js
-const data = await JumboJSON.parse('/path/to/file.json', {
-  minimumFileSize: 10 * 1024 * 1024, // use streaming parser for files >= 10MB
-});
+const response = await fetch('/path/to/data.json');
+const data = await JumboJSON.parse(response.body);
 ```
 
 ### Parse from a stream
 
 ```js
 import { JumboJSON } from 'jumbo-json';
-import { createReadStream } from 'node:fs';
 
-const stream = createReadStream('/path/to/huge.json');
+const stream = new ReadableStream({
+  /* ... */
+});
 const data = await JumboJSON.parse(stream);
 ```
 

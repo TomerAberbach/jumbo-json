@@ -1,32 +1,25 @@
-import { after, describe, test } from 'node:test';
+import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFile, mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { Readable } from 'node:stream';
 import { JumboJSON } from '../src/index.ts';
 
-const dir = await mkdtemp(join(tmpdir(), 'big-json-'));
-let counter = 0;
-
-after(() => rm(dir, { recursive: true, force: true }));
-
-const parse = async (text: string): Promise<unknown> => {
-  const filePath = join(dir, `input-${counter++}.json`);
-  await writeFile(filePath, text);
-  return JumboJSON.parse(filePath, { minimumFileSize: 1 });
-};
-
-const strToReadable = (text: string, chunkSize: number = 4): Readable => {
-  const chunks: Buffer[] = [];
-  for (let i = 0; i < text.length; i += chunkSize) {
-    chunks.push(Buffer.from(text.slice(i, i + chunkSize)));
-  }
-  return Readable.from(chunks);
+const strToStream = (text: string, chunkSize: number = 4): ReadableStream<Uint8Array> => {
+  const encoder = new TextEncoder();
+  const encoded = encoder.encode(text);
+  let offset = 0;
+  return new ReadableStream({
+    pull(controller) {
+      if (offset >= encoded.length) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(encoded.subarray(offset, offset + chunkSize));
+      offset += chunkSize;
+    },
+  });
 };
 
 const parseStream = (text: string, chunkSize: number = 4): Promise<unknown> =>
-  JumboJSON.parse(strToReadable(text, chunkSize));
+  JumboJSON.parse(strToStream(text, chunkSize));
 
 const multiMethodTest = (
   testName: string,
@@ -34,19 +27,13 @@ const multiMethodTest = (
   testFn: (parse: () => Promise<unknown>, input: string) => Promise<unknown>,
 ) => {
   if (typeof input === 'string') {
-    test(`[file]   ${testName}`, async () => {
-      await testFn(() => parse(input), input);
-    });
-    test(`[stream] ${testName}`, async () => {
+    test(testName, async () => {
       await testFn(() => parseStream(input), input);
     });
   } else {
     for (const i of input) {
       const inputName = i.length > 5 ? `${i.slice(0, 5)}...` : i;
-      test(`[file]   ${testName} (${inputName})`, async () => {
-        await testFn(() => parse(i), i);
-      });
-      test(`[stream] ${testName} (${inputName})`, async () => {
+      test(`${testName} (${inputName})`, async () => {
         await testFn(() => parseStream(i, input.length / 2), i);
         await testFn(() => parseStream(i, input.length / 3), i);
       });
@@ -170,7 +157,7 @@ describe('strings', () => {
   test('unicode escape spanning chunk boundary', async () => {
     for (let chunkSize = 1; chunkSize <= 7; chunkSize++) {
       const value = await JumboJSON.parse(
-        strToReadable('"\\u0041"', chunkSize),
+        strToStream('"\\u0041"', chunkSize),
       );
       assert.equal(value, 'A', `failed at chunkSize=${chunkSize}`);
     }
@@ -179,7 +166,7 @@ describe('strings', () => {
   test('surrogate pair spanning chunk boundary', async () => {
     for (let chunkSize = 1; chunkSize <= 11; chunkSize++) {
       const value = await JumboJSON.parse(
-        strToReadable('"\\uD83D\\uDE00"', chunkSize),
+        strToStream('"\\uD83D\\uDE00"', chunkSize),
       );
       assert.equal(value, '😀', `failed at chunkSize=${chunkSize}`);
     }
@@ -248,7 +235,7 @@ describe('numbers', () => {
 
   test('number spanning chunk boundary', async () => {
     for (let chunkSize = 1; chunkSize <= 6; chunkSize++) {
-      const value = await JumboJSON.parse(strToReadable('123.45', chunkSize));
+      const value = await JumboJSON.parse(strToStream('123.45', chunkSize));
       assert.equal(value, 123.45, `failed at chunkSize=${chunkSize}`);
     }
   });

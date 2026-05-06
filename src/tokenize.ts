@@ -3,6 +3,14 @@ import { ParserContext } from './context.ts';
 import { ParseError } from './error.ts';
 import { ParserState } from './types.ts';
 
+const decoder = new TextDecoder();
+
+const readUInt32LE = (buf: Uint8Array, index: number): number =>
+  (buf[index]! | (buf[index + 1]! << 8) | (buf[index + 2]! << 16) | (buf[index + 3]! << 24)) >>> 0;
+
+const asciiSlice = (buf: Uint8Array, start: number, end: number): string =>
+  decoder.decode(buf.subarray(start, end));
+
 /**
  * Returns the index of the first byte that wasn't consumed
  * @param ctx Current parser state
@@ -11,7 +19,7 @@ import { ParserState } from './types.ts';
  */
 export function tokenize(
   ctx: ParserContext,
-  buf: Buffer,
+  buf: Uint8Array,
   end: number,
   isLastChunk: boolean = false,
 ): number {
@@ -183,7 +191,7 @@ export function tokenize(
         }
 
         if (i < end || isLastChunk) {
-          const str = ctx.getNumberSoFar() + buf.toString('ascii', consumed, i);
+          const str = ctx.getNumberSoFar() + asciiSlice(buf, consumed, i);
           if (!NUMBER_RE.test(str)) {
             throw ParseError.expected(
               ctx.chunkBaseOffset + consumed,
@@ -194,7 +202,7 @@ export function tokenize(
           ctx.commit(Number(str));
           consumed = i;
         } else {
-          ctx.addNumberChunk(buf.toString('ascii', consumed, i));
+          ctx.addNumberChunk(asciiSlice(buf, consumed, i));
           return i;
         }
         continue;
@@ -210,7 +218,7 @@ export function tokenize(
             // Need at least one more byte to know the escape type
             if (i + 1 >= end) {
               if (i > chunkStart) {
-                ctx.addStringChunk(Buffer.from(buf.subarray(chunkStart, i)));
+                ctx.addStringChunk(buf.slice(chunkStart, i));
               }
               return i;
             }
@@ -218,7 +226,7 @@ export function tokenize(
             const simple = SimpleEscapeSequence[nextChar];
             if (simple !== undefined) {
               if (i > chunkStart) {
-                ctx.addStringChunk(Buffer.from(buf.subarray(chunkStart, i)));
+                ctx.addStringChunk(buf.slice(chunkStart, i));
               }
               ctx.addStringChunk(simple);
               i += 1;
@@ -227,11 +235,11 @@ export function tokenize(
               // \uXXXX — need 6 bytes total (\, u, 4 hex digits)
               if (i + 6 > end) {
                 if (i > chunkStart) {
-                  ctx.addStringChunk(Buffer.from(buf.subarray(chunkStart, i)));
+                  ctx.addStringChunk(buf.slice(chunkStart, i));
                 }
                 return i;
               }
-              const hex = buf.toString('ascii', i + 2, i + 6);
+              const hex = asciiSlice(buf, i + 2, i + 6);
               if (!/^[0-9a-fA-F]{4}$/.test(hex)) {
                 throw ParseError.expected(
                   ctx.chunkBaseOffset + i + 2,
@@ -245,9 +253,7 @@ export function tokenize(
                 // High surrogate — look for low surrogate following it
                 if (i + 12 > end) {
                   if (i > chunkStart) {
-                    ctx.addStringChunk(
-                      Buffer.from(buf.subarray(chunkStart, i)),
-                    );
+                    ctx.addStringChunk(buf.slice(chunkStart, i));
                   }
                   return i;
                 }
@@ -255,7 +261,7 @@ export function tokenize(
                   buf[i + 6] === Byte.Backslash &&
                   buf[i + 7] === Byte.LowerU
                 ) {
-                  const lowHex = buf.toString('ascii', i + 8, i + 12);
+                  const lowHex = asciiSlice(buf, i + 8, i + 12);
                   if (!/^[0-9a-fA-F]{4}$/.test(lowHex)) {
                     throw ParseError.expected(
                       ctx.chunkBaseOffset + i + 8,
@@ -270,9 +276,7 @@ export function tokenize(
                       ((codePoint - 0xd800) << 10) +
                       (lowSurrogate - 0xdc00);
                     if (i > chunkStart) {
-                      ctx.addStringChunk(
-                        Buffer.from(buf.subarray(chunkStart, i)),
-                      );
+                      ctx.addStringChunk(buf.slice(chunkStart, i));
                     }
                     ctx.addStringChunk(String.fromCodePoint(codePoint));
                     i += 11;
@@ -282,7 +286,7 @@ export function tokenize(
                 }
               }
               if (i > chunkStart) {
-                ctx.addStringChunk(Buffer.from(buf.subarray(chunkStart, i)));
+                ctx.addStringChunk(buf.slice(chunkStart, i));
               }
               ctx.addStringChunk(String.fromCodePoint(codePoint));
               i += 5;
@@ -313,7 +317,7 @@ export function tokenize(
             throw ParseError.unexpectedEndOfInput(ctx.chunkBaseOffset + i);
           }
           if (i > chunkStart) {
-            ctx.addStringChunk(Buffer.from(buf.subarray(chunkStart, i)));
+            ctx.addStringChunk(buf.slice(chunkStart, i));
           }
           return i;
         }
@@ -334,7 +338,7 @@ export function tokenize(
  */
 const parseTrue = (
   ctx: ParserContext,
-  buf: Buffer,
+  buf: Uint8Array,
   index: number,
   end: number,
   isLastChunk: boolean,
@@ -344,7 +348,7 @@ const parseTrue = (
       throw ParseError.unexpectedEndOfInput(ctx.chunkBaseOffset + index);
     return null;
   }
-  if (buf.readUInt32LE(index) !== StringBytes.TrueLE) {
+  if (readUInt32LE(buf, index) !== StringBytes.TrueLE) {
     throw ParseError.expected(
       ctx.chunkBaseOffset + index,
       'true',
@@ -359,7 +363,7 @@ const parseTrue = (
  */
 const parseFalse = (
   ctx: ParserContext,
-  buf: Buffer,
+  buf: Uint8Array,
   index: number,
   end: number,
   isLastChunk: boolean,
@@ -370,7 +374,7 @@ const parseFalse = (
     return null;
   }
   if (
-    buf.readUInt32LE(index) !== StringBytes.FalsLE ||
+    readUInt32LE(buf, index) !== StringBytes.FalsLE ||
     buf[index + 4] !== Byte.LowerE
   ) {
     throw ParseError.expected(
@@ -387,7 +391,7 @@ const parseFalse = (
  */
 const parseNull = (
   ctx: ParserContext,
-  buf: Buffer,
+  buf: Uint8Array,
   index: number,
   end: number,
   isLastChunk: boolean,
@@ -397,7 +401,7 @@ const parseNull = (
       throw ParseError.unexpectedEndOfInput(ctx.chunkBaseOffset + index);
     return null;
   }
-  if (buf.readUInt32LE(index) !== StringBytes.NullLE) {
+  if (readUInt32LE(buf, index) !== StringBytes.NullLE) {
     throw ParseError.expected(
       ctx.chunkBaseOffset + index,
       'null',
@@ -417,7 +421,7 @@ const isNumberChar = (char: number): boolean =>
   char === Byte.Minus ||
   char === Byte.Plus;
 
-const ws = (buf: Buffer, index: number, end: number): number => {
+const ws = (buf: Uint8Array, index: number, end: number): number => {
   while (index < end) {
     const char = buf[index];
     if (

@@ -9,7 +9,7 @@ export class ParseError extends Error {
   static expected(
     offset: number,
     expected: string | number,
-    actual: string | number | Buffer,
+    actual: string | number | Uint8Array,
   ): ParseError {
     if (typeof expected === 'number') {
       expected = String.fromCharCode(expected);
@@ -17,8 +17,8 @@ export class ParseError extends Error {
     if (typeof actual === 'number') {
       actual = String.fromCharCode(actual);
     }
-    if (Buffer.isBuffer(actual)) {
-      actual = actual.toString();
+    if (actual instanceof Uint8Array) {
+      actual = new TextDecoder().decode(actual);
     }
     return new ParseError(
       offset,

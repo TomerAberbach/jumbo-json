@@ -6,8 +6,7 @@
     "json",
     "parser",
     "streaming",
-    "large",
-    "file"
+    "large"
   ],
   "repository": {
     "type": "git",
@@ -48,8 +47,5 @@
     "prettier": "^3.8.3",
     "typescript-eslint": "^8.59.1"
   },
-  "packageManager": "pnpm@10.27.0",
-  "engines": {
-    "node": ">=18"
-  }
+  "packageManager": "pnpm@10.27.0"
 }

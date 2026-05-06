@@ -1,83 +1,42 @@
-import { stat, open, readFile } from 'node:fs/promises';
 import { InputBuffer } from './input-buffer.ts';
-import { type ParseFileConfig, ParserState } from './types.ts';
-import assert from 'node:assert';
+import { ParserState } from './types.ts';
 import { tokenize } from './tokenize.ts';
 import { ParseError } from './error.ts';
-import { Readable } from 'node:stream';
 import { ParserContext } from './context.ts';
 
-async function parse(
-  filePath: string,
-  config?: ParseFileConfig,
-): Promise<unknown>;
-async function parse(readable: Readable): Promise<unknown>;
-async function parse(
-  input: string | Readable,
-  config: ParseFileConfig = {},
-): Promise<unknown> {
+async function parse(stream: ReadableStream<Uint8Array>): Promise<unknown> {
   const inputBuffer = new InputBuffer();
   const ctx = new ParserContext();
-  if (typeof input === 'string') {
-    const filePath = input;
-    const minimumFileSize = config.minimumFileSize ?? 1024 * 1024;
-    if ((await stat(filePath)).size < minimumFileSize) {
-      return JSON.parse((await readFile(filePath)).toString());
-    }
+  const reader = stream.getReader();
 
-    const handle = await open(filePath);
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    try {
-      while (true) {
-        const { buf, offset, capacity } = inputBuffer.reserve(16 * 1024);
-        const { bytesRead } = await handle.read(buf, offset, capacity);
-        inputBuffer.commit(bytesRead);
-
-        if (bytesRead === 0) break;
-
-        const consumed = tokenize(ctx, inputBuffer.bytes, inputBuffer.length);
-        ctx.chunkBaseOffset += consumed;
-        inputBuffer.shift(consumed);
-      }
-
-      const consumed = tokenize(
-        ctx,
-        inputBuffer.bytes,
-        inputBuffer.length,
-        true,
-      );
-      ctx.chunkBaseOffset += consumed;
-      inputBuffer.shift(consumed);
-      if (inputBuffer.length > 0) {
-        throw ParseError.truncatedInput(ctx.chunkBaseOffset);
-      }
-    } finally {
-      handle.close();
-    }
-  } else {
-    for await (const chunk of input) {
-      inputBuffer.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      inputBuffer.push(value);
       const consumed = tokenize(ctx, inputBuffer.bytes, inputBuffer.length);
       ctx.chunkBaseOffset += consumed;
       inputBuffer.shift(consumed);
     }
+  } finally {
+    reader.releaseLock();
+  }
 
-    const consumed = tokenize(ctx, inputBuffer.bytes, inputBuffer.length, true);
-    ctx.chunkBaseOffset += consumed;
-    inputBuffer.shift(consumed);
-    if (inputBuffer.length > 0) {
-      throw ParseError.truncatedInput(ctx.chunkBaseOffset);
-    }
+  const consumed = tokenize(ctx, inputBuffer.bytes, inputBuffer.length, true);
+  ctx.chunkBaseOffset += consumed;
+  inputBuffer.shift(consumed);
+  if (inputBuffer.length > 0) {
+    throw ParseError.truncatedInput(ctx.chunkBaseOffset);
   }
 
   if (ctx.state !== ParserState.Done) {
     throw ParseError.unexpectedEndOfInput(ctx.chunkBaseOffset);
   }
 
-  assert(
-    ctx.frames.length === 1,
-    `Expected to have a single root frame, found ${ctx.frames.length}`,
-  );
+  if (ctx.frames.length !== 1) {
+    throw new Error(`Expected to have a single root frame, found ${ctx.frames.length}`);
+  }
 
   return ctx.frames[0]!.value;
 }
