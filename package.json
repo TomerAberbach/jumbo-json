@@ -1,6 +1,6 @@
 {
   "name": "jumbo-json",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "For when you have a Boeing 747 worth of JSON you want in memory",
   "keywords": [
     "json",

@@ -15,8 +15,9 @@ large inputs before it even starts parsing. jumbo-json reads straight from bytes
 so that limit doesn't apply.
 
 Below that threshold, `JSON.parse` is roughly 6–10× faster than jumbo-json
-because it runs native C++ code rather than a JS tokenizer. Use `JSON.parse`
-for anything that comfortably fits in memory.
+because it runs native C++ code rather than a JS tokenizer. jumbo-json handles
+this automatically — when the input size is known and small enough, it falls
+back to `JSON.parse` for you.
 
 ## Usage
 
@@ -50,8 +51,8 @@ const data = await JumboJSON.parse(response.body);
 
 ### Automatic fallback to `JSON.parse`
 
-If you know the input size ahead of time, pass it via `inputSize`. When the
-size is at or below `nativeThreshold` (default: 512 MB), jumbo-json will
+If you know the input size ahead of time, pass it via `sizeHint`. When the
+size is at or below `streamingThreshold` (default: 512 MB), jumbo-json will
 buffer the stream and delegate to `JSON.parse` automatically — so you can use
 a single code path regardless of payload size.
 
@@ -62,19 +63,19 @@ import { open, stat } from 'node:fs/promises';
 const { size } = await stat('/path/to/data.json');
 const handle = await open('/path/to/data.json');
 try {
-  const data = await JumboJSON.parse(handle.readableWebStream(), { inputSize: size });
+  const data = await JumboJSON.parse(handle.readableWebStream(), { sizeHint: size });
 } finally {
   await handle.close();
 }
 ```
 
-Override `nativeThreshold` to change the cutoff:
+Override `streamingThreshold` to change the cutoff:
 
 ```js
 // Always use the native parser (never stream)
 const data = await JumboJSON.parse(stream, {
-  inputSize: payloadBytes,
-  nativeThreshold: Infinity,
+  sizeHint: payloadBytes,
+  streamingThreshold: Infinity,
 });
 ```
 
