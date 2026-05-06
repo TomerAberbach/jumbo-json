@@ -11,8 +11,12 @@ export interface ParseOptions {
   nativeThreshold?: number;
 }
 
-async function parse(stream: ReadableStream<Uint8Array>, options?: ParseOptions): Promise<unknown> {
-  const { inputSize, nativeThreshold = DEFAULT_NATIVE_THRESHOLD } = options ?? {};
+async function parse<T = unknown>(
+  stream: ReadableStream<Uint8Array>,
+  options?: ParseOptions,
+): Promise<T> {
+  const { inputSize, nativeThreshold = DEFAULT_NATIVE_THRESHOLD } =
+    options ?? {};
 
   if (inputSize !== undefined && inputSize <= nativeThreshold) {
     const chunks: Uint8Array[] = [];
@@ -65,10 +69,12 @@ async function parse(stream: ReadableStream<Uint8Array>, options?: ParseOptions)
   }
 
   if (ctx.frames.length !== 1) {
-    throw new Error(`Expected to have a single root frame, found ${ctx.frames.length}`);
+    throw new Error(
+      `Expected to have a single root frame, found ${ctx.frames.length}`,
+    );
   }
 
-  return ctx.frames[0]!.value;
+  return ctx.frames[0]!.value as T;
 }
 
 export const JumboJSON = {
