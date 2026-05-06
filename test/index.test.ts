@@ -1,8 +1,12 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
+import * as fc from 'fast-check';
 import { JumboJSON } from '../src/index.ts';
 
-const strToStream = (text: string, chunkSize: number = 4): ReadableStream<Uint8Array> => {
+const strToStream = (
+  text: string,
+  chunkSize: number = 4,
+): ReadableStream<Uint8Array> => {
   const encoder = new TextEncoder();
   const encoded = encoder.encode(text);
   let offset = 0;
@@ -156,9 +160,7 @@ describe('strings', () => {
 
   test('unicode escape spanning chunk boundary', async () => {
     for (let chunkSize = 1; chunkSize <= 7; chunkSize++) {
-      const value = await JumboJSON.parse(
-        strToStream('"\\u0041"', chunkSize),
-      );
+      const value = await JumboJSON.parse(strToStream('"\\u0041"', chunkSize));
       assert.equal(value, 'A', `failed at chunkSize=${chunkSize}`);
     }
   });
@@ -384,4 +386,15 @@ describe('arrays', () => {
       assert.equal(JSON.stringify(value), '[[true,[false,[null]]]]');
     },
   );
+});
+
+describe('round-trip', () => {
+  test('arbitrary JSON round-trips through the streaming parser', async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.json(), async (jsonString) => {
+        const result = await parseStream(jsonString);
+        assert.deepStrictEqual(result, JSON.parse(jsonString));
+      }),
+    );
+  });
 });

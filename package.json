@@ -44,6 +44,7 @@
     "@typescript/native-preview": "beta",
     "eslint": "^10.2.1",
     "eslint-config-prettier": "^10.1.8",
+    "fast-check": "^4.7.0",
     "prettier": "^3.8.3",
     "typescript-eslint": "^8.59.1"
   },
