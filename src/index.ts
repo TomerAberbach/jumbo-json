@@ -4,7 +4,37 @@ import { tokenize } from './tokenize.ts';
 import { ParseError } from './error.ts';
 import { ParserContext } from './context.ts';
 
-async function parse(stream: ReadableStream<Uint8Array>): Promise<unknown> {
+const DEFAULT_NATIVE_THRESHOLD = 512 * 1024 * 1024;
+
+export interface ParseOptions {
+  inputSize?: number;
+  nativeThreshold?: number;
+}
+
+async function parse(stream: ReadableStream<Uint8Array>, options?: ParseOptions): Promise<unknown> {
+  const { inputSize, nativeThreshold = DEFAULT_NATIVE_THRESHOLD } = options ?? {};
+
+  if (inputSize !== undefined && inputSize <= nativeThreshold) {
+    const chunks: Uint8Array[] = [];
+    const reader = stream.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const combined = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+    let offset = 0;
+    for (const chunk of chunks) {
+      combined.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return JSON.parse(new TextDecoder().decode(combined));
+  }
+
   const inputBuffer = new InputBuffer();
   const ctx = new ParserContext();
   const reader = stream.getReader();

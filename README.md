@@ -8,13 +8,15 @@ Try 🎉`jumbo-json`🎉! The only\* JSON library that will load in
 arbitrarily\*\* large JSON files entirely in to memory for you to use without
 any headache.
 
-## Why would I use this?
+## When should I use this?
 
-Did you know that there's a maximum string length? This limits how much JSON you
-can load up at once. jumbo-json reads straight from the file bytes at a time so
-you don't have to worry about that. This also makes it useful on resource
-constrained systems where you don't have the RAM available for loading large
-chunks of JSON all at once.
+V8's string size cap (~512 MB) means `JSON.parse` throws a `RangeError` on
+large inputs before it even starts parsing. jumbo-json reads straight from bytes
+so that limit doesn't apply.
+
+Below that threshold, `JSON.parse` is roughly 6–10× faster than jumbo-json
+because it runs native C++ code rather than a JS tokenizer. Use `JSON.parse`
+for anything that comfortably fits in memory.
 
 ## Usage
 
@@ -44,6 +46,36 @@ import { JumboJSON } from 'jumbo-json';
 
 const response = await fetch('/path/to/data.json');
 const data = await JumboJSON.parse(response.body);
+```
+
+### Automatic fallback to `JSON.parse`
+
+If you know the input size ahead of time, pass it via `inputSize`. When the
+size is at or below `nativeThreshold` (default: 512 MB), jumbo-json will
+buffer the stream and delegate to `JSON.parse` automatically — so you can use
+a single code path regardless of payload size.
+
+```js
+import { JumboJSON } from 'jumbo-json';
+import { open, stat } from 'node:fs/promises';
+
+const { size } = await stat('/path/to/data.json');
+const handle = await open('/path/to/data.json');
+try {
+  const data = await JumboJSON.parse(handle.readableWebStream(), { inputSize: size });
+} finally {
+  await handle.close();
+}
+```
+
+Override `nativeThreshold` to change the cutoff:
+
+```js
+// Always use the native parser (never stream)
+const data = await JumboJSON.parse(stream, {
+  inputSize: payloadBytes,
+  nativeThreshold: Infinity,
+});
 ```
 
 ### Parse from a stream
