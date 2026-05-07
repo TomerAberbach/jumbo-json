@@ -3,11 +3,6 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import * as fc from 'fast-check';
 import { JumboJSON } from '../src/index.ts';
 
-const session = new Session();
-session.connect();
-await session.post('Profiler.enable');
-await session.post('Profiler.start');
-
 const encoder = new TextEncoder();
 
 function* strToIterable(text: string, chunkSize: number): Iterable<Uint8Array> {
@@ -23,8 +18,13 @@ const chunkedJsonStrings = fc.sample(
     .map(([value, chunkSize]) =>
       strToIterable(JSON.stringify(value), chunkSize),
     ),
-  { seed: 42, numRuns: 25_000 },
+  { seed: 42, numRuns: 50_000 },
 );
+
+const session = new Session();
+session.connect();
+await session.post('Profiler.enable');
+await session.post('Profiler.start');
 
 for (const chunkedJsonString of chunkedJsonStrings) {
   JumboJSON.parse(chunkedJsonString);
