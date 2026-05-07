@@ -14,11 +14,14 @@ function* strToIterable(text: string, chunkSize: number): Iterable<Uint8Array> {
 
 const chunkedJsonStrings = fc.sample(
   fc
-    .tuple(fc.jsonValue(), fc.integer({ min: 1, max: 50 }))
+    .tuple(
+      fc.jsonValue({ depthSize: 'xlarge' }),
+      fc.integer({ min: 1, max: 50 }),
+    )
     .map(([value, chunkSize]) =>
       strToIterable(JSON.stringify(value), chunkSize),
     ),
-  { seed: 42, numRuns: 50_000 },
+  { seed: 42, numRuns: 5_000 },
 );
 
 const session = new Session();
