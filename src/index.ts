@@ -32,6 +32,10 @@ async function parse<T = unknown>(
 async function parse<T = unknown>(
   input: string | Blob | ReadableStream<Uint8Array>,
   options?: ParseOptions,
+): Promise<T>;
+async function parse<T = unknown>(
+  input: string | Blob | ReadableStream<Uint8Array>,
+  options?: ParseOptions,
 ): Promise<T> {
   if (typeof input === 'string') {
     return JSON.parse(input);
