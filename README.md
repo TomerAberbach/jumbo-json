@@ -21,23 +21,20 @@ back to `JSON.parse` for you.
 
 ## Usage
 
-`JumboJSON.parse` accepts any [`ReadableStream<Uint8Array>`](https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream), so it works in any JS runtime.
+`JumboJSON.parse` accepts any [`ReadableStream<Uint8Array>`](https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream) or [`Blob`](https://developer.mozilla.org/en-US/docs/Web/API/Blob), so it works in any JS runtime.
+
+Passing a `Blob` is preferred over because [its size is known](https://developer.mozilla.org/en-US/docs/Web/API/Blob/size) ahead of time.
 
 ### Parse from a file (Node.js, zero-copy)
 
-Use `FileHandle.readableWebStream()` so the OS writes file bytes directly into
-the stream's buffer.
+Use [`openAsBlob`](https://nodejs.org/api/fs.html#fsopenasblobpath-options):
 
 ```js
 import { JumboJSON } from 'jumbo-json';
-import { open } from 'node:fs/promises';
+import { openAsBlob } from 'node:fs';
 
-const handle = await open('/path/to/huge.json');
-try {
-  const data = await JumboJSON.parse(handle.readableWebStream());
-} finally {
-  await handle.close();
-}
+const blob = await openAsBlob('/path/to/huge.json');
+const data = await JumboJSON.parse(blob);
 ```
 
 ### Parse from a fetch response (browser / edge)
@@ -51,10 +48,10 @@ const data = await JumboJSON.parse(response.body);
 
 ### Automatic fallback to `JSON.parse`
 
-If you know the input size ahead of time, pass it via `sizeHint`. When the
-size is at or below `streamingThreshold` (default: 512 MB), jumbo-json will
-buffer the stream and delegate to `JSON.parse` automatically — so you can use
-a single code path regardless of payload size.
+If you know the input size ahead of time, but can't create a `Blob`, then pass a
+`sizeHint`. When the size is at or below `streamingThreshold` (default: 512 MB),
+`jumbo-json` will buffer the stream and delegate to `JSON.parse` automatically —
+so you can use a single code path regardless of payload size.
 
 ```js
 import { JumboJSON } from 'jumbo-json';
@@ -63,7 +60,9 @@ import { open, stat } from 'node:fs/promises';
 const { size } = await stat('/path/to/data.json');
 const handle = await open('/path/to/data.json');
 try {
-  const data = await JumboJSON.parse(handle.readableWebStream(), { sizeHint: size });
+  const data = await JumboJSON.parse(handle.readableWebStream(), {
+    sizeHint: size,
+  });
 } finally {
   await handle.close();
 }
