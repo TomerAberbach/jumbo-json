@@ -79,10 +79,16 @@ export class ParserContext {
   }
 
   endString(lastChunk: Uint8Array) {
-    this.stringChunks.push(lastChunk);
-    const result = this.stringChunks
-      .map((c) => (typeof c === 'string' ? c : decoder.decode(c)))
-      .join('');
+    let result: string;
+    if (this.stringChunks.length === 0) {
+      result = decoder.decode(lastChunk);
+    } else {
+      this.stringChunks.push(lastChunk);
+      result = '';
+      for (const c of this.stringChunks) {
+        result += typeof c === 'string' ? c : decoder.decode(c);
+      }
+    }
     if (this.parsingObjectKey) {
       this.parsingObjectKey = false;
       const frame = this.frames[this.frames.length - 1]!;
@@ -108,7 +114,18 @@ export class ParserContext {
         break;
 
       case FrameKind.Object:
-        frame.value[frame.pendingKey] = value;
+        if (frame.pendingKey === '__proto__') {
+          // Assigning `__proto__` via normal assignment would modify the
+          // protoype instead of adding an own property.
+          Object.defineProperty(frame.value, frame.pendingKey, {
+            value,
+            writable: true,
+            enumerable: true,
+            configurable: true,
+          });
+        } else {
+          frame.value[frame.pendingKey] = value;
+        }
         this.state = ParserState.ExpectCommaOrClose;
         break;
     }
