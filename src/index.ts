@@ -75,6 +75,7 @@ function parse<T = unknown>(
     return JSON.parse(input);
   }
 
+  // eslint-disable-next-line prefer-const
   let { sizeHint, streamingThreshold = DEFAULT_NATIVE_THRESHOLD } =
     options ?? {};
 

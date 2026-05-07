@@ -28,7 +28,6 @@ function* strToIterable(
   chunkSize: number = 4,
 ): Iterable<Uint8Array> {
   const encoded = encoder.encode(text);
-  const chunks: Uint8Array[] = [];
   for (let i = 0; i < encoded.length; i += chunkSize) {
     yield encoded.subarray(i, i + chunkSize);
   }
@@ -397,7 +396,7 @@ describe('objects', () => {
 
   multiMethodTest(
     'does not have prototype pollution',
-    '{\"__proto__\":null}',
+    '{"__proto__":null}',
     async (parse) => {
       const value = await parse();
 
