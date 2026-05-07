@@ -21,20 +21,34 @@ back to `JSON.parse` for you.
 
 ## Usage
 
-`JumboJSON.parse` accepts any [`ReadableStream<Uint8Array>`](https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream) or [`Blob`](https://developer.mozilla.org/en-US/docs/Web/API/Blob), so it works in any JS runtime.
+jumbo-json exposes two methods:
 
-Passing a `Blob` is preferred over because [its size is known](https://developer.mozilla.org/en-US/docs/Web/API/Blob/size) ahead of time.
+- **`JumboJSON.parse`**: synchronous, accepts a `string`, `Uint8Array`, or `Iterable<Uint8Array>`
+- **`JumboJSON.parseAsync`**:
+  asynchronous, accepts a [`ReadableStream<Uint8Array>`](https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream) or [`Blob`](https://developer.mozilla.org/en-US/docs/Web/API/Blob)
+
+Passing a `Blob` to `parseAsync` is preferred over a stream because [its size is known](https://developer.mozilla.org/en-US/docs/Web/API/Blob/size) ahead of time.
 
 ### Parse from a file (Node.js, zero-copy)
 
-Use [`openAsBlob`](https://nodejs.org/api/fs.html#fsopenasblobpath-options):
+Use [`openAsBlob`](https://nodejs.org/api/fs.html#fsopenasblobpath-options) with `parseAsync`:
 
 ```js
 import { JumboJSON } from 'jumbo-json';
 import { openAsBlob } from 'node:fs';
 
 const blob = await openAsBlob('/path/to/huge.json');
-const data = await JumboJSON.parse(blob);
+const data = await JumboJSON.parseAsync(blob);
+```
+
+Or use `readFileSync` with the synchronous `parse`:
+
+```js
+import { JumboJSON } from 'jumbo-json';
+import { readFileSync } from 'node:fs';
+
+const bytes = readFileSync('/path/to/huge.json');
+const data = JumboJSON.parse(bytes);
 ```
 
 ### Parse from a fetch response (browser / edge)
@@ -43,15 +57,16 @@ const data = await JumboJSON.parse(blob);
 import { JumboJSON } from 'jumbo-json';
 
 const response = await fetch('/path/to/data.json');
-const data = await JumboJSON.parse(response.body);
+const data = await JumboJSON.parseAsync(response.body);
 ```
 
 ### Automatic fallback to `JSON.parse`
 
-If you know the input size ahead of time, but can't create a `Blob`, then pass a
-`sizeHint`. When the size is at or below `streamingThreshold` (default: 512 MB),
-`jumbo-json` will buffer the stream and delegate to `JSON.parse` automatically —
+When the input size is at or below `streamingThreshold` (default: 512 MB),
+`jumbo-json` buffers the input and delegates to `JSON.parse` automatically —
 so you can use a single code path regardless of payload size.
+
+If you know the size ahead of time but can't create a `Blob`, pass a `sizeHint`:
 
 ```js
 import { JumboJSON } from 'jumbo-json';
@@ -60,7 +75,7 @@ import { open, stat } from 'node:fs/promises';
 const { size } = await stat('/path/to/data.json');
 const handle = await open('/path/to/data.json');
 try {
-  const data = await JumboJSON.parse(handle.readableWebStream(), {
+  const data = await JumboJSON.parseAsync(handle.readableWebStream(), {
     sizeHint: size,
   });
 } finally {
@@ -72,8 +87,17 @@ Override `streamingThreshold` to change the cutoff:
 
 ```js
 // Always use the native parser (never stream)
-const data = await JumboJSON.parse(stream, {
+const data = await JumboJSON.parseAsync(stream, {
   sizeHint: payloadBytes,
+  streamingThreshold: Infinity,
+});
+```
+
+The same `sizeHint` and `streamingThreshold` options work with the synchronous `parse` when passing an `Iterable<Uint8Array>`:
+
+```js
+const data = JumboJSON.parse(iterableOfChunks, {
+  sizeHint: totalBytes,
   streamingThreshold: Infinity,
 });
 ```
@@ -86,7 +110,7 @@ import { JumboJSON } from 'jumbo-json';
 const stream = new ReadableStream({
   /* ... */
 });
-const data = await JumboJSON.parse(stream);
+const data = await JumboJSON.parseAsync(stream);
 ```
 
 ---

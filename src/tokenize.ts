@@ -6,7 +6,11 @@ import { ParserState } from './types.ts';
 const decoder = new TextDecoder();
 
 const readUInt32LE = (buf: Uint8Array, index: number): number =>
-  (buf[index]! | (buf[index + 1]! << 8) | (buf[index + 2]! << 16) | (buf[index + 3]! << 24)) >>> 0;
+  (buf[index]! |
+    (buf[index + 1]! << 8) |
+    (buf[index + 2]! << 16) |
+    (buf[index + 3]! << 24)) >>>
+  0;
 
 const asciiSlice = (buf: Uint8Array, start: number, end: number): string =>
   decoder.decode(buf.subarray(start, end));

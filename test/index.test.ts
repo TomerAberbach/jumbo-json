@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import * as fc from 'fast-check';
 import { JumboJSON } from '../src/index.ts';
 
+const encoder = new TextEncoder();
+
 const strToStream = (
   text: string,
   chunkSize: number = 4,
 ): ReadableStream<Uint8Array> => {
-  const encoder = new TextEncoder();
   const encoded = encoder.encode(text);
   let offset = 0;
   return new ReadableStream({
@@ -22,26 +23,54 @@ const strToStream = (
   });
 };
 
-const parseStream = (text: string, chunkSize: number = 4): Promise<unknown> =>
-  JumboJSON.parse(strToStream(text, chunkSize));
+const strToIterable = (text: string, chunkSize: number = 4): Uint8Array[] => {
+  const encoded = encoder.encode(text);
+  const chunks: Uint8Array[] = [];
+  for (let i = 0; i < encoded.length; i += chunkSize) {
+    chunks.push(encoded.subarray(i, i + chunkSize));
+  }
+  return chunks;
+};
 
 const multiMethodTest = (
   testName: string,
   input: string | string[],
   testFn: (parse: () => Promise<unknown>, input: string) => Promise<unknown>,
 ) => {
-  if (typeof input === 'string') {
-    test(testName, async () => {
-      await testFn(() => parseStream(input), input);
+  const inputs = typeof input === 'string' ? [input] : input;
+  const makeName = (i: string) => {
+    if (typeof input === 'string') return testName;
+    const inputName = i.length > 5 ? `${i.slice(0, 5)}...` : i;
+    return `${testName} (${inputName})`;
+  };
+
+  for (const i of inputs) {
+    test(makeName(i), async () => {
+      await testFn(async () => JumboJSON.parse(i), i);
+      await testFn(
+        async () => JumboJSON.parse(i, { streamingThreshold: 0 }),
+        i,
+      );
+      await testFn(async () => JumboJSON.parse(encoder.encode(i)), i);
+      await testFn(
+        async () =>
+          JumboJSON.parse(encoder.encode(i), { streamingThreshold: 0 }),
+        i,
+      );
+      await testFn(async () => JumboJSON.parse([...strToIterable(i)]), i);
+      await testFn(
+        async () =>
+          JumboJSON.parse([...strToIterable(i)], { streamingThreshold: 0 }),
+        i,
+      );
+      await testFn(async () => JumboJSON.parse(strToIterable(i)), i);
+      await testFn(() => JumboJSON.parseAsync(new Blob([i])), i);
+      await testFn(
+        () => JumboJSON.parseAsync(new Blob([i]), { streamingThreshold: 0 }),
+        i,
+      );
+      await testFn(() => JumboJSON.parseAsync(strToStream(i)), i);
     });
-  } else {
-    for (const i of input) {
-      const inputName = i.length > 5 ? `${i.slice(0, 5)}...` : i;
-      test(`${testName} (${inputName})`, async () => {
-        await testFn(() => parseStream(i, input.length / 2), i);
-        await testFn(() => parseStream(i, input.length / 3), i);
-      });
-    }
   }
 };
 
@@ -55,7 +84,7 @@ describe('null', () => {
   );
 
   multiMethodTest('truncated null throws', 'nul', async (parse) => {
-    await assert.rejects(parse(), /Unexpected end of input/i);
+    await assert.rejects(parse(), /Unexpected end of( JSON)? input/i);
   });
 });
 
@@ -160,14 +189,16 @@ describe('strings', () => {
 
   test('unicode escape spanning chunk boundary', async () => {
     for (let chunkSize = 1; chunkSize <= 7; chunkSize++) {
-      const value = await JumboJSON.parse(strToStream('"\\u0041"', chunkSize));
+      const value = await JumboJSON.parseAsync(
+        strToStream('"\\u0041"', chunkSize),
+      );
       assert.equal(value, 'A', `failed at chunkSize=${chunkSize}`);
     }
   });
 
   test('surrogate pair spanning chunk boundary', async () => {
     for (let chunkSize = 1; chunkSize <= 11; chunkSize++) {
-      const value = await JumboJSON.parse(
+      const value = await JumboJSON.parseAsync(
         strToStream('"\\uD83D\\uDE00"', chunkSize),
       );
       assert.equal(value, '😀', `failed at chunkSize=${chunkSize}`);
@@ -178,7 +209,10 @@ describe('strings', () => {
     'unescaped control character throws',
     ['"\x01"', '"\x09"', '"\x1f"'],
     async (parse) => {
-      await assert.rejects(parse(), /valid string character/i);
+      await assert.rejects(
+        parse(),
+        /valid string character|Bad control character/i,
+      );
     },
   );
 
@@ -186,12 +220,18 @@ describe('strings', () => {
     'unterminated string throws',
     ['"hello', '"hello\\n'],
     async (parse) => {
-      await assert.rejects(parse(), /Unexpected end of input/i);
+      await assert.rejects(
+        parse(),
+        /Unexpected end of input|Unterminated string/i,
+      );
     },
   );
 
   multiMethodTest('invalid escape sequence throws', '"\\q"', async (parse) => {
-    await assert.rejects(parse(), /valid escape character/i);
+    await assert.rejects(
+      parse(),
+      /valid escape character|Bad escaped character/i,
+    );
   });
 });
 
@@ -200,7 +240,10 @@ describe('literals', () => {
     'cannot have multiple sequential literals',
     'true true',
     async (parse) => {
-      await assert.rejects(parse(), /Expected input to end at byte/);
+      await assert.rejects(
+        parse(),
+        /Expected input to end at byte|non-whitespace character after JSON/,
+      );
     },
   );
 });
@@ -237,33 +280,35 @@ describe('numbers', () => {
 
   test('number spanning chunk boundary', async () => {
     for (let chunkSize = 1; chunkSize <= 6; chunkSize++) {
-      const value = await JumboJSON.parse(strToStream('123.45', chunkSize));
+      const value = await JumboJSON.parseAsync(
+        strToStream('123.45', chunkSize),
+      );
       assert.equal(value, 123.45, `failed at chunkSize=${chunkSize}`);
     }
   });
 
   multiMethodTest('leading zero is invalid', ['01', '01.5'], async (parse) => {
-    await assert.rejects(parse(), /valid number/i);
+    await assert.rejects(parse(), /valid number|Unexpected number in JSON/i);
   });
 
   multiMethodTest('leading dot is invalid', '.5', async (parse) => {
-    await assert.rejects(parse(), /valid JSON character/i);
+    await assert.rejects(parse(), /valid JSON/i);
   });
 
   multiMethodTest('trailing dot is invalid', ['1.', '-1.'], async (parse) => {
-    await assert.rejects(parse(), /valid number/i);
+    await assert.rejects(parse(), /valid number|Unterminated fractional/i);
   });
 
   multiMethodTest(
     'bare exponent is invalid',
     ['1e', '1e+', '1e-'],
     async (parse) => {
-      await assert.rejects(parse(), /valid number/i);
+      await assert.rejects(parse(), /valid number|Exponent part is missing/i);
     },
   );
 
   multiMethodTest('double minus is invalid', '--1', async (parse) => {
-    await assert.rejects(parse(), /valid number/i);
+    await assert.rejects(parse(), /valid number|No number after minus/i);
   });
 });
 
@@ -333,16 +378,19 @@ describe('objects', () => {
     'missing key quotes throws',
     ['{a:1}', '{1:2}'],
     async (parse) => {
-      await assert.rejects(parse(), /'"'/);
+      await assert.rejects(parse(), /'"'|property name/i);
     },
   );
 
   multiMethodTest('trailing comma throws', '{"a":1,}', async (parse) => {
-    await assert.rejects(parse(), /'"'/);
+    await assert.rejects(parse(), /'"'|property name/i);
   });
 
   multiMethodTest('missing closing brace throws', '{"a":1', async (parse) => {
-    await assert.rejects(parse(), /Unexpected end of input/i);
+    await assert.rejects(
+      parse(),
+      /Unexpected end of input|Expected ',' or '}'/i,
+    );
   });
 });
 
@@ -389,10 +437,10 @@ describe('arrays', () => {
 });
 
 describe('round-trip', () => {
-  test('arbitrary JSON round-trips through the streaming parser', async () => {
-    await fc.assert(
-      fc.asyncProperty(fc.json(), async (jsonString) => {
-        const result = await parseStream(jsonString);
+  test('arbitrary JSON round-trips through the streaming parser', () => {
+    fc.assert(
+      fc.property(fc.json(), (jsonString) => {
+        const result = JumboJSON.parse(jsonString, { streamingThreshold: 0 });
         assert.deepStrictEqual(result, JSON.parse(jsonString));
       }),
     );

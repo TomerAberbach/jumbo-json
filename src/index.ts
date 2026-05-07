@@ -13,42 +13,133 @@ export interface ParseOptions {
   streamingThreshold?: number;
 }
 
+function concatUint8Arrays(chunks: Iterable<Uint8Array>): Uint8Array {
+  const chunkArray = Array.isArray(chunks) ? chunks : [...chunks];
+  const concatenated = new Uint8Array(
+    chunkArray.reduce((n, c) => n + c.length, 0),
+  );
+  let offset = 0;
+  for (const chunk of chunks) {
+    concatenated.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return concatenated;
+}
+
+const finishParse = <T>(ctx: ParserContext, inputBuffer: InputBuffer): T => {
+  const consumed = tokenize(ctx, inputBuffer.bytes, inputBuffer.length, true);
+  ctx.chunkBaseOffset += consumed;
+  inputBuffer.shift(consumed);
+  if (inputBuffer.length > 0) {
+    throw ParseError.truncatedInput(ctx.chunkBaseOffset);
+  }
+
+  if (ctx.state !== ParserState.Done) {
+    throw ParseError.unexpectedEndOfInput(ctx.chunkBaseOffset);
+  }
+
+  if (ctx.frames.length !== 1) {
+    throw new Error(
+      `Expected to have a single root frame, found ${ctx.frames.length}`,
+    );
+  }
+
+  return ctx.frames[0]!.value as T;
+};
+
 /**
- * Parses a JSON document.
+ * Parses a JSON document from a synchronous source.
  *
  * For large inputs, a custom streaming parser is used to avoid materializing
  * the entire document in memory at once. Inputs at or below `streamingThreshold`
  * (default 512 MiB) are handed off to native `JSON.parse` for better performance.
  */
-async function parse<T = unknown>(input: string): Promise<T>;
-async function parse<T = unknown>(
-  input: Blob,
+function parse<T = unknown>(input: string): T;
+function parse<T = unknown>(
+  input: Uint8Array,
   options?: Pick<ParseOptions, 'streamingThreshold'>,
-): Promise<T>;
-async function parse<T = unknown>(
-  input: ReadableStream<Uint8Array>,
+): T;
+function parse<T = unknown>(
+  input: Iterable<Uint8Array>,
   options?: ParseOptions,
-): Promise<T>;
-async function parse<T = unknown>(
-  input: string | Blob | ReadableStream<Uint8Array>,
+): T;
+function parse<T = unknown>(
+  input: string | Uint8Array | Iterable<Uint8Array>,
   options?: ParseOptions,
-): Promise<T>;
-async function parse<T = unknown>(
-  input: string | Blob | ReadableStream<Uint8Array>,
+): T;
+function parse<T = unknown>(
+  input: string | Uint8Array | Iterable<Uint8Array>,
   options?: ParseOptions,
-): Promise<T> {
+): T {
   if (typeof input === 'string') {
     return JSON.parse(input);
   }
 
-  const { sizeHint, streamingThreshold = DEFAULT_NATIVE_THRESHOLD } =
+  let { sizeHint, streamingThreshold = DEFAULT_NATIVE_THRESHOLD } =
     options ?? {};
 
+  if (sizeHint === undefined) {
+    if (Array.isArray(input)) {
+      input = concatUint8Arrays(input);
+      sizeHint = input.byteLength;
+    } else if (ArrayBuffer.isView(input)) {
+      sizeHint = input.byteLength;
+    }
+  }
+
+  if (sizeHint !== undefined && sizeHint <= streamingThreshold) {
+    return JSON.parse(
+      new TextDecoder().decode(
+        ArrayBuffer.isView(input) ? input : concatUint8Arrays(input),
+      ),
+    );
+  }
+
+  const inputBuffer = new InputBuffer();
+  const ctx = new ParserContext();
+
+  const chunks = ArrayBuffer.isView(input) ? [input] : input;
+  for (const chunk of chunks) {
+    inputBuffer.push(chunk);
+    const consumed = tokenize(ctx, inputBuffer.bytes, inputBuffer.length);
+    ctx.chunkBaseOffset += consumed;
+    inputBuffer.shift(consumed);
+  }
+
+  return finishParse(ctx, inputBuffer);
+}
+
+/**
+ * Parses a JSON document from an asynchronous source.
+ *
+ * For large inputs, a custom streaming parser is used to avoid materializing
+ * the entire document in memory at once. Inputs at or below `streamingThreshold`
+ * (default 512 MiB) are handed off to native `JSON.parse` for better performance.
+ */
+async function parseAsync<T = unknown>(
+  input: Blob,
+  options?: Pick<ParseOptions, 'streamingThreshold'>,
+): Promise<T>;
+async function parseAsync<T = unknown>(
+  input: ReadableStream<Uint8Array>,
+  options?: ParseOptions,
+): Promise<T>;
+async function parseAsync<T = unknown>(
+  input: Blob | ReadableStream<Uint8Array>,
+  options?: ParseOptions,
+): Promise<T>;
+async function parseAsync<T = unknown>(
+  input: Blob | ReadableStream<Uint8Array>,
+  {
+    sizeHint,
+    streamingThreshold = DEFAULT_NATIVE_THRESHOLD,
+  }: ParseOptions = {},
+): Promise<T> {
   if (input instanceof Blob) {
     if (input.size <= streamingThreshold) {
       return JSON.parse(await input.text());
     }
-    return parse<T>(input.stream());
+    input = input.stream();
   }
 
   if (sizeHint !== undefined && sizeHint <= streamingThreshold) {
@@ -63,13 +154,7 @@ async function parse<T = unknown>(
     } finally {
       reader.releaseLock();
     }
-    const combined = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
-    let offset = 0;
-    for (const chunk of chunks) {
-      combined.set(chunk, offset);
-      offset += chunk.length;
-    }
-    return JSON.parse(new TextDecoder().decode(combined));
+    return JSON.parse(new TextDecoder().decode(concatUint8Arrays(chunks)));
   }
 
   const inputBuffer = new InputBuffer();
@@ -90,26 +175,10 @@ async function parse<T = unknown>(
     reader.releaseLock();
   }
 
-  const consumed = tokenize(ctx, inputBuffer.bytes, inputBuffer.length, true);
-  ctx.chunkBaseOffset += consumed;
-  inputBuffer.shift(consumed);
-  if (inputBuffer.length > 0) {
-    throw ParseError.truncatedInput(ctx.chunkBaseOffset);
-  }
-
-  if (ctx.state !== ParserState.Done) {
-    throw ParseError.unexpectedEndOfInput(ctx.chunkBaseOffset);
-  }
-
-  if (ctx.frames.length !== 1) {
-    throw new Error(
-      `Expected to have a single root frame, found ${ctx.frames.length}`,
-    );
-  }
-
-  return ctx.frames[0]!.value as T;
+  return finishParse(ctx, inputBuffer);
 }
 
 export const JumboJSON = {
   parse,
+  parseAsync,
 };
