@@ -1,11 +1,3 @@
-export type ParseFileConfig = {
-  /**
-   * Use `JSON.parse` for any files smaller than this value in bytes.
-   * Defaults to 1MB (TODO: Find out what is actually a good value)
-   */
-  minimumFileSize?: number;
-};
-
 export const FrameKind = {
   Root: 0,
   Array: 1,
