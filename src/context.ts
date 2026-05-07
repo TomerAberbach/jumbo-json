@@ -108,7 +108,18 @@ export class ParserContext {
         break;
 
       case FrameKind.Object:
-        frame.value[frame.pendingKey] = value;
+        if (frame.pendingKey === '__proto__') {
+          // Assigning `__proto__` via normal assignment would modify the
+          // protoype instead of adding an own property.
+          Object.defineProperty(frame.value, frame.pendingKey, {
+            value,
+            writable: true,
+            enumerable: true,
+            configurable: true,
+          });
+        } else {
+          frame.value[frame.pendingKey] = value;
+        }
         this.state = ParserState.ExpectCommaOrClose;
         break;
     }

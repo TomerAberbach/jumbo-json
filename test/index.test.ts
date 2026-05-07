@@ -23,14 +23,16 @@ const strToStream = (
   });
 };
 
-const strToIterable = (text: string, chunkSize: number = 4): Uint8Array[] => {
+function* strToIterable(
+  text: string,
+  chunkSize: number = 4,
+): Iterable<Uint8Array> {
   const encoded = encoder.encode(text);
   const chunks: Uint8Array[] = [];
   for (let i = 0; i < encoded.length; i += chunkSize) {
-    chunks.push(encoded.subarray(i, i + chunkSize));
+    yield encoded.subarray(i, i + chunkSize);
   }
-  return chunks;
-};
+}
 
 const multiMethodTest = (
   testName: string,
@@ -392,6 +394,16 @@ describe('objects', () => {
       /Unexpected end of input|Expected ',' or '}'/i,
     );
   });
+
+  multiMethodTest(
+    'does not have prototype pollution',
+    '{\"__proto__\":null}',
+    async (parse) => {
+      const value = await parse();
+
+      assert.equal(Object.getPrototypeOf(value), Object.prototype);
+    },
+  );
 });
 
 describe('arrays', () => {
@@ -440,7 +452,7 @@ describe('round-trip', () => {
   test('arbitrary JSON round-trips through the streaming parser', () => {
     fc.assert(
       fc.property(fc.json(), (jsonString) => {
-        const result = JumboJSON.parse(jsonString, { streamingThreshold: 0 });
+        const result = JumboJSON.parse(strToIterable(jsonString));
         assert.deepStrictEqual(result, JSON.parse(jsonString));
       }),
     );
